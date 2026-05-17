@@ -64,5 +64,5 @@ jobs:
             ${{ runner.os }}-apt-
       - run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool
-      - run: cargo test --all-features --all
+          sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb
+      - run: xvfb-run cargo test --all-features --all
