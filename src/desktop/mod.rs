@@ -145,9 +145,7 @@ impl DesktopManager {
             }
         });
 
-        Some(DesktopHandle {
-            _tray_icon: tray,
-        })
+        Some(DesktopHandle { _tray_icon: tray })
     }
 
     /// Opens the default browser to the server URL.
@@ -176,18 +174,8 @@ impl DesktopManager {
 
 /// Builds the tray context menu with "Open Dashboard" and "Quit" items.
 fn build_menu() -> Menu {
-    let open_item = MenuItem::with_id(
-        MENU_OPEN,
-        "Open Dashboard",
-        true,
-        None,
-    );
-    let quit_item = MenuItem::with_id(
-        MENU_QUIT,
-        "Quit",
-        true,
-        None,
-    );
+    let open_item = MenuItem::with_id(MENU_OPEN, "Open Dashboard", true, None);
+    let quit_item = MenuItem::with_id(MENU_QUIT, "Quit", true, None);
 
     let menu = Menu::new();
     let _ = menu.append_items(&[&open_item, &quit_item]);
@@ -212,14 +200,14 @@ fn create_icon() -> Icon {
 
             let idx = (y * size + x) as usize * 4;
             if in_circle {
-                pixels[idx] = 220;     // R
+                pixels[idx] = 220; // R
                 pixels[idx + 1] = 225; // G
                 pixels[idx + 2] = 255; // B
                 pixels[idx + 3] = 255; // A
             } else {
-                pixels[idx] = 30;      // R
-                pixels[idx + 1] = 30;  // G
-                pixels[idx + 2] = 40;  // B
+                pixels[idx] = 30; // R
+                pixels[idx + 1] = 30; // G
+                pixels[idx + 2] = 40; // B
                 pixels[idx + 3] = 255; // A
             }
         }

@@ -200,6 +200,20 @@ main() {
     detect_os
     echo ""
 
+    # --check: exit after dependency verification
+    if [[ "${1:-}" == "--check" ]]; then
+        if check_dependencies; then
+            info "All dependencies satisfied."
+        else
+            echo ""
+            error "Some dependencies are missing."
+            info "Run without --check to install them:"
+            echo "  ./scripts/setup.sh"
+            exit 1
+        fi
+        return 0
+    fi
+
     if check_dependencies; then
         info "All dependencies satisfied."
         echo ""

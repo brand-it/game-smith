@@ -73,6 +73,29 @@ cargo test <test_name> -- --nocapture
 cargo run -- generate migration <name>
 ```
 
+All of the above are available as `make` targets. Run `make help` for the full list:
+
+```text
+  setup         Install system dependencies and configure local build
+  setup-check   Check dependencies without installing
+  dev           Start dev server (localhost:5150)
+  dev-desktop   Start dev server with desktop features
+  watch         Auto-restart on file changes (requires cargo-watch)
+  test          Run all tests
+  test-desktop  Run tests with desktop feature
+  fmt           Format code
+  fmt-check     Check formatting
+  lint          Run clippy with strict rules
+  qa            Run fmt-check, lint, and test
+  migrate-gen   Generate new migration (NAME=create_games)
+  migrate-up    Run pending migrations
+  build         Build without features
+  build-desktop Build with desktop features
+  release       Production build with desktop features
+  clean         Remove build artifacts
+  reset         Full reset (remove DB + build artifacts)
+```
+
 ## Code Conventions & Patterns
 
 ### Error Handling

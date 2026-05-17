@@ -36,7 +36,10 @@ fn loads_defaults_when_no_env_vars() {
     assert!(config.enabled, "enabled should default to true");
     assert!(config.open_browser, "open_browser should default to true");
     assert!(config.tray.enabled, "tray.enabled should default to true");
-    assert_eq!(config.tray.tooltip, "game-smith", "tooltip should default to 'game-smith'");
+    assert_eq!(
+        config.tray.tooltip, "game-smith",
+        "tooltip should default to 'game-smith'"
+    );
     assert_eq!(config.port, 5150, "port should default to 5150");
 }
 
@@ -46,7 +49,10 @@ fn loads_defaults_when_no_env_vars() {
 fn respects_disabled_flag() {
     with_env("GAME_SMITH_DESKTOP_ENABLED", "false", || {
         let config = DesktopConfig::from_env();
-        assert!(!config.enabled, "enabled should be false when set to 'false'");
+        assert!(
+            !config.enabled,
+            "enabled should be false when set to 'false'"
+        );
     });
 }
 
@@ -66,7 +72,10 @@ fn respects_port_override() {
 fn invalid_port_falls_back_to_default() {
     with_env("GAME_SMITH_PORT", "not-a-number", || {
         let config = DesktopConfig::from_env();
-        assert_eq!(config.port, 5150, "invalid port should fall back to default");
+        assert_eq!(
+            config.port, 5150,
+            "invalid port should fall back to default"
+        );
     });
 }
 
@@ -76,7 +85,10 @@ fn invalid_port_falls_back_to_default() {
 fn tray_can_be_disabled() {
     with_env("GAME_SMITH_DESKTOP_TRAY_ENABLED", "0", || {
         let config = DesktopConfig::from_env();
-        assert!(!config.tray.enabled, "tray should be disabled when set to '0'");
+        assert!(
+            !config.tray.enabled,
+            "tray should be disabled when set to '0'"
+        );
     });
 }
 
@@ -86,7 +98,10 @@ fn tray_can_be_disabled() {
 fn browser_open_can_be_disabled() {
     with_env("GAME_SMITH_DESKTOP_OPEN_BROWSER", "false", || {
         let config = DesktopConfig::from_env();
-        assert!(!config.open_browser, "open_browser should be false when set to 'false'");
+        assert!(
+            !config.open_browser,
+            "open_browser should be false when set to 'false'"
+        );
     });
 }
 

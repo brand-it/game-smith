@@ -63,17 +63,17 @@ assets/
 ## Quick Start
 
 ```sh
-cargo run -- start
+make dev
 ```
 
 Boots the server, runs pending migrations, and starts listening on `http://localhost:5150`. No external CLI tool required.
 
 ```sh
 # Desktop mode (tray icon + auto-open browser)
-cargo run --features desktop -- start
+make dev-desktop
 
 # Production (SQLite + background workers)
-cargo build --release --features desktop
+make release
 ./target/release/game_smith-cli start
 ```
 
@@ -84,7 +84,7 @@ cargo build --release --features desktop
 Run the setup script to check and install missing system dependencies:
 
 ```sh
-./scripts/setup.sh
+make setup
 ```
 
 Detects your OS/distro and installs GTK3, libappindicator, and xdotool (required for the `desktop` feature). Creates `.cargo/config.local.toml` with the necessary library paths.
@@ -93,11 +93,22 @@ On unsupported distributions, you'll need to install these manually.
 
 > Local build configuration goes in `.cargo/config.local.toml` (gitignored).
 > Never commit machine-specific paths to `.cargo/config.toml`.
+
 ### Running tests
 
 ```sh
-cargo test
+make test
 ```
+
+### Quality gates
+
+```sh
+make qa    # runs fmt-check, lint, and test
+```
+
+### Available targets
+
+Run `make help` for a full list of available targets including migrations, builds, and cleanup.
 
 ### Configuration
 
