@@ -94,3 +94,7 @@ auth:
     secret: aroD4i0irsuYD4eiugRa
     # Token expiration time in seconds
     expiration: 604800 # 7 days
+
+# Desktop Integration Configuration
+desktop:
+  enable: false

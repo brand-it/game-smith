@@ -41,11 +41,18 @@ unic-langid = { version = "0.9" }
 # /view engine
 axum-extra = { version = "0.10", features = ["form"] }
 
+# desktop integration (optional)
+tray-icon = { version = "0.24", optional = true }
+gtk = { version = "0.18", optional = true }
+notify-rust = { version = "4", optional = true }
+open = { version = "5", optional = true }
+[features]
+default = []
+desktop = ["dep:tray-icon", "dep:gtk", "dep:notify-rust", "dep:open"]
 [[bin]]
 name = "game_smith-cli"
 path = "src/bin/main.rs"
 required-features = []
-
 [dev-dependencies]
 loco-rs = { workspace = true, features = ["testing"] }
 serial_test = { version = "3.1.1" }

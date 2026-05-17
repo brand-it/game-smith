@@ -97,3 +97,14 @@ auth:
     secret: va4tJA01aenjBws4INsm
     # Token expiration time in seconds
     expiration: 604800 # 7 days
+
+# Desktop Integration Configuration
+desktop:
+  # Enable desktop features (tray icon, notifications, browser auto-open)
+  enable: true
+  # Auto-open browser on startup
+  open_browser: true
+  # Tray icon settings
+  tray:
+    enable: true
+    tooltip: "game-smith"

@@ -38,32 +38,39 @@ src/bin/main.rs  →  cli::main::<App, Migrator>()  →  App implements Hooks
 | `config/*.yaml` | Environment configuration (dev, test) |
 | `migration/` | Database migrations (Sea-ORM Migrator) |
 | `assets/i18n/` | Fluent resource files |
-| `assets/i18n/_shared.ftl` | Shared Fluent terms (underscore prefix prevents ArcLoader from parsing as language tag) |
-| `tests/` | Integration tests organized by domain |
-
+|| `assets/i18n/_shared.ftl` | Shared Fluent terms (underscore prefix prevents ArcLoader from parsing as language tag) |
+|| `src/desktop/` | Desktop integration (tray, notifications, browser open) — behind `desktop` feature |
+|| `assets/icons/` | Tray icon assets |
+|| `tests/` | Integration tests organized by domain |
 ## Development Commands
 
 ```bash
 # Build
-cargo build --all-features
+cargo build
 
 # Run (development)
-cargo run --all-features
+cargo run
+
+# Build with desktop integration (tray icon, notifications, browser auto-open)
+cargo build --features desktop
+
+# Run with desktop integration
+cargo run --features desktop
 
 # Format (check only)
 cargo fmt --all -- --check
 
 # Lint (strict — pedantic + nursery + rust-2018-idioms, warnings as errors)
-cargo clippy --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
+cargo clippy -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
 
-# Test (full suite, all features)
-cargo test --all-features --all
+# Test (full suite)
+cargo test
 
 # Run single test
-cargo test --all-features <test_name> -- --nocapture
+cargo test <test_name> -- --nocapture
 
 # Migrations
-cargo run --all-features -- generate migration <name>
+cargo run -- generate migration <name>
 ```
 
 ## Code Conventions & Patterns
@@ -97,12 +104,31 @@ cargo run --all-features -- generate migration <name>
 - Response DTOs implement `serde::Serialize` and are returned via `format::json()`.
 - Use `&str` over `&String` in function signatures (clippy `ptr_arg`).
 
+### Local Environment
+- Machine-specific build configuration (library paths, linker overrides) belongs in `.cargo/config.local.toml`, which is gitignored.
+- Run `./scripts/setup.sh` to generate it; never commit changes to `.cargo/config.toml` that affect only your machine.
+### Desktop Integration
+- Optional `desktop` Cargo feature adds system tray icon, desktop notifications, and browser auto-open.
+- Behind `#[cfg(feature = "desktop")]` — code does not compile when feature is absent.
+- Configured via environment variables: `GAME_SMITH_DESKTOP_ENABLED`, `GAME_SMITH_DESKTOP_OPEN_BROWSER`, `GAME_SMITH_DESKTOP_TRAY_ENABLED`, `GAME_SMITH_DESKTOP_TRAY_TOOLTIP`, `GAME_SMITH_PORT`.
+- Tray icon runs on a dedicated OS thread; menu events polled via `tray-icon`'s global channel.
+- Desktop features initialize in `src/bin/main.rs` before `cli::main()`.
+- Linux requires GTK/appindicator system dependencies when `desktop` feature is enabled.
+- **Linux libxdo workaround**: Fedora ships `libxdo.so.3` but not `libxdo.so`. Create `~/.local/lib/libxdo.so → /usr/lib64/libxdo.so.3` and ensure `~/.local/lib` is in `LIBRARY_PATH` (configured by `./scripts/setup.sh` in `.cargo/config.local.toml`).
+
 ## Testing & QA
 
+Rust has three test locations:
+
+1. **Inline `#[cfg(test)]` modules** in source files — unit tests, fast, test internal APIs.
+2. **`tests/` directory** at crate root — integration tests. Each file is compiled as a separate crate that imports the library through its public API. This is where `cargo test` looks by default.
+3. **`benches/` directory** — benchmarks.
+
 ### Test Structure
-- `tests/models/` — Model unit tests.
-- `tests/requests/` — Integration tests (HTTP handlers).
+- `tests/models/` — Model integration tests.
+- `tests/requests/` — HTTP handler integration tests.
 - `tests/requests/prepare_data.rs` — Test data setup helpers.
+- `tests/desktop/` — Desktop feature integration tests.
 - `tests/tasks/`, `tests/workers/` — Task and worker tests.
 - Snapshots stored alongside test files in `tests/*/snapshots/`.
 
@@ -150,3 +176,6 @@ async fn test_name() {
 | `config/test.yaml` | Test environment configuration (SQLite, JWT secret) |
 | `Cargo.toml` | Dependencies, features, dev-dependencies |
 | `migration/src/lib.rs` | Migration registry |
+|| `src/desktop/mod.rs` | DesktopManager: tray icon, menu, browser open |
+|| `src/desktop/notifications.rs` | Desktop notification helper |
+|| `src/bin/main.rs` | DesktopManager initialization |

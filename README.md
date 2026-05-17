@@ -63,18 +63,36 @@ assets/
 ## Quick Start
 
 ```sh
-cargo loco start
+cargo run -- start
 ```
 
-Starts the development server with hot-reload. See [Loco's quick tour](https://loco.rs/docs/getting-started/tour/) or [complete guide](https://loco.rs/docs/getting-started/guide/) for framework conventions and CLI reference.
+Boots the server, runs pending migrations, and starts listening on `http://localhost:5150`. No external CLI tool required.
+
+```sh
+# Desktop mode (tray icon + auto-open browser)
+cargo run --features desktop -- start
+
+# Production (SQLite + background workers)
+cargo build --release --features desktop
+./target/release/game_smith-cli start
+```
 
 ## Development
 
-### Prerequisites
+### Setup
 
-- Rust (stable)
-- [Loco CLI](https://loco.rs/docs/getting-started/installation/) (`cargo install loco-cli`)
+Run the setup script to check and install missing system dependencies:
 
+```sh
+./scripts/setup.sh
+```
+
+Detects your OS/distro and installs GTK3, libappindicator, and xdotool (required for the `desktop` feature). Creates `.cargo/config.local.toml` with the necessary library paths.
+
+On unsupported distributions, you'll need to install these manually.
+
+> Local build configuration goes in `.cargo/config.local.toml` (gitignored).
+> Never commit machine-specific paths to `.cargo/config.toml`.
 ### Running tests
 
 ```sh
