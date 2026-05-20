@@ -1,5 +1,5 @@
 .PHONY: help setup setup-check dev watch \
-	test fmt fmt-check lint qa \
+	test fmt fmt-check style lint qa \
 	migrate-gen migrate-up build release package package-rpm install run-release clean reset
 
 help:
@@ -17,6 +17,7 @@ help:
 	@echo "  test          Run all tests"
 	@echo "  fmt           Format code"
 	@echo "  fmt-check     Check formatting"
+	@echo "  style         Auto-fix formatting and lint issues"
 	@echo "  lint          Run clippy with strict rules"
 	@echo "  qa            Run fmt-check, lint, and test"
 	@echo ""
@@ -58,6 +59,11 @@ test:
 fmt:
 	cargo fmt --all
 
+
+style:
+	cargo fmt --all
+	cargo clippy --fix --allow-dirty --allow-staged \
+	  -- -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
 fmt-check:
 	cargo fmt --all -- --check
 

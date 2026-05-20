@@ -41,20 +41,18 @@ pub struct TrayConfig {
 
 impl DesktopConfig {
     /// Load configuration from environment variables.
+    #[must_use]
     pub fn from_env() -> Self {
         use std::env;
 
-        let enabled = env::var("GAME_SMITH_DESKTOP_ENABLED")
-            .map(|v| v != "false" && v != "0")
-            .unwrap_or(true);
+        let enabled =
+            env::var("GAME_SMITH_DESKTOP_ENABLED").map_or(true, |v| v != "false" && v != "0");
 
-        let open_browser = env::var("GAME_SMITH_DESKTOP_OPEN_BROWSER")
-            .map(|v| v != "false" && v != "0")
-            .unwrap_or(true);
+        let open_browser =
+            env::var("GAME_SMITH_DESKTOP_OPEN_BROWSER").map_or(true, |v| v != "false" && v != "0");
 
-        let tray_enabled = env::var("GAME_SMITH_DESKTOP_TRAY_ENABLED")
-            .map(|v| v != "false" && v != "0")
-            .unwrap_or(true);
+        let tray_enabled =
+            env::var("GAME_SMITH_DESKTOP_TRAY_ENABLED").map_or(true, |v| v != "false" && v != "0");
 
         let tooltip = env::var("GAME_SMITH_DESKTOP_TRAY_TOOLTIP")
             .unwrap_or_else(|_| "game-smith".to_string());
@@ -90,12 +88,14 @@ pub struct DesktopManager {
 
 impl DesktopManager {
     /// Returns the configured server URL.
+    #[must_use]
     pub fn server_url(&self) -> &str {
         &self.server_url
     }
 
     /// Creates a new desktop manager with the given configuration and server URL.
-    pub fn new(config: DesktopConfig, server_url: String) -> Self {
+    #[must_use]
+    pub const fn new(config: DesktopConfig, server_url: String) -> Self {
         Self { config, server_url }
     }
 
@@ -105,6 +105,7 @@ impl DesktopManager {
     /// Menu events are handled inline on that thread.
     ///
     /// Returns `None` if tray is disabled or creation fails.
+    #[must_use]
     pub fn spawn_tray(&self) -> Option<DesktopHandle> {
         if !self.config.tray.enabled {
             return None;
@@ -151,8 +152,12 @@ impl DesktopManager {
             glib::idle_add(move || {
                 while let Ok(event) = rx_menu.try_recv() {
                     match event.id.as_ref() {
-                        MENU_OPEN => { let _ = open::that(&server_url); }
-                        MENU_QUIT => { process::exit(0); }
+                        MENU_OPEN => {
+                            let _ = open::that(&server_url);
+                        }
+                        MENU_QUIT => {
+                            process::exit(0);
+                        }
                         _ => {}
                     }
                 }
@@ -217,31 +222,31 @@ fn build_menu() -> Menu {
 
 /// Creates a procedural 32x32 tray icon (simple white circle on dark background).
 fn create_icon() -> Icon {
-    let size = 32;
+    let size = 32u32;
     let mut pixels = vec![0u8; (size * size * 4) as usize];
 
     let center = size / 2;
     let radius = size / 2 - 2;
+    let radius_sq = radius * radius;
 
     for y in 0..size {
         for x in 0..size {
-            let dx = x as i32 - center as i32;
-            let dy = y as i32 - center as i32;
+            let dx = x.abs_diff(center);
+            let dy = y.abs_diff(center);
             let dist_sq = dx * dx + dy * dy;
-            let in_circle = dist_sq <= (radius as i32) * (radius as i32);
+            let in_circle = dist_sq <= radius_sq;
 
             let idx = (y * size + x) as usize * 4;
             if in_circle {
                 pixels[idx] = 220; // R
                 pixels[idx + 1] = 225; // G
                 pixels[idx + 2] = 255; // B
-                pixels[idx + 3] = 255; // A
             } else {
                 pixels[idx] = 30; // R
                 pixels[idx + 1] = 30; // G
                 pixels[idx + 2] = 40; // B
-                pixels[idx + 3] = 255; // A
             }
+            pixels[idx + 3] = 255; // A
         }
     }
 

@@ -1,7 +1,7 @@
 use game_smith::app::App;
 use loco_rs::cli;
 use migration::Migrator;
-
+use std::io::Write;
 
 // Route panics through tracing so they land in the file appender.
 // eprintln! ensures the message is always visible even before tracing init.
@@ -13,12 +13,8 @@ fn install_panic_hook() {
 }
 
 fn ensure_app_data_dirs() {
-    let data_home = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
-        format!(
-            "{}/.local/share",
-            std::env::var("HOME").unwrap_or_default()
-        )
-    });
+    let data_home = std::env::var("XDG_DATA_HOME")
+        .unwrap_or_else(|_| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
     let app_dir = std::path::PathBuf::from(&data_home).join("game-smith");
 
     // Ensure XDG_DATA_HOME is set so Tera config templates resolve correctly.
@@ -45,18 +41,13 @@ fn ensure_app_data_dirs() {
             .trim()
             .to_string()
     } else {
-        let new_secret = uuid::Uuid::new_v4().to_string()
-            + "-"
-            + &uuid::Uuid::new_v4().to_string();
+        let new_secret = uuid::Uuid::new_v4().to_string() + "-" + &uuid::Uuid::new_v4().to_string();
         std::fs::write(&secret_path, &new_secret).expect("failed to write secret_key");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                &secret_path,
-                std::fs::Permissions::from_mode(0o600),
-            )
-            .expect("failed to set secret_key permissions");
+            std::fs::set_permissions(&secret_path, std::fs::Permissions::from_mode(0o600))
+                .expect("failed to set secret_key permissions");
         }
         eprintln!(
             "game-smith: generated new JWT secret at {}",
@@ -98,7 +89,14 @@ fn main() -> loco_rs::Result<()> {
                 manager.open_browser();
             }
             let handle = manager.spawn_tray();
-            eprintln!("game-smith: tray handle = {}", if handle.is_some() { "Some (created)" } else { "None (failed)" });
+            eprintln!(
+                "game-smith: tray handle = {}",
+                if handle.is_some() {
+                    "Some (created)"
+                } else {
+                    "None (failed)"
+                }
+            );
             handle
         } else {
             eprintln!("game-smith: desktop disabled");
@@ -128,16 +126,18 @@ fn write_boot_log() {
         "{} PID={} DISPLAY={} WAYLAND={} LOCO_ENV={}\n",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0),
+            .map_or(0, |d| d.as_secs()),
         std::process::id(),
         std::env::var("DISPLAY").unwrap_or_else(|_| "(unset)".into()),
         std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "(unset)".into()),
         std::env::var("LOCO_ENV").unwrap_or_else(|_| "(unset)".into()),
     );
     // Append so we keep a history of boots.
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let _ = f.write_all(line.as_bytes());
     }
 }
