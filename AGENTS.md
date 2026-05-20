@@ -189,6 +189,15 @@ async fn test_name() {
 - `cleanup_user_model()` provides sensitive data filters for snapshots.
 - Test config: `config/test.yaml` (SQLite in-memory DB).
 
+## Post-Change Verification
+
+When making code changes, add these tasks to your todo list and run them before marking work complete:
+
+- `Run make test` — all tests pass
+- `Run make qa` — fmt-check, lint, and tests all pass
+
+These are required tasks on every todo list that involves code changes. Add them when you initialize the list; do not skip or drop them.
+
 ## Important Files
 
 | File | Purpose |
