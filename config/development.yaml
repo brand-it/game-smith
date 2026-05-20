@@ -19,7 +19,7 @@ logger:
     level: debug
     format: json
     rotation: daily
-    dir: {{ get_env(name="XDG_DATA_HOME", default="/home/brandit/.local/share") }}/game-smith/logs
+    dir: /tmp/game-smith/logs
     filename_prefix: game-smith
     filename_suffix: log
     max_log_files: 7
@@ -104,7 +104,7 @@ auth:
   # JWT authentication
   jwt:
     # Secret key for token generation and verification
-    secret: {{ get_env(name="GAME_SMITH_JWT_SECRET", default="dev-only-insecure-secret") }}
+    secret: override-at-runtime
     # Token expiration time in seconds
     expiration: 604800 # 7 days
 

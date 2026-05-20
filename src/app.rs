@@ -35,6 +35,34 @@ impl Hooks for App {
         )
     }
 
+    async fn load_config(env: &Environment) -> Result<Config> {
+        // Tests use their own config with hardcoded values.
+        if matches!(env, Environment::Test) {
+            return Config::new(env);
+        }
+
+        let mut config = Config::new(env)?;
+        let dirs = super::AppDirs::new(super::resolve_data_home());
+        let secret = super::JwtSecret::load_or_generate(&dirs.secret_path);
+
+        // Override database URI with computed XDG path.
+        config.database.uri = dirs.db_uri();
+
+        // Override JWT secret with persisted secret.
+        if let Some(auth) = &mut config.auth {
+            if let Some(jwt) = &mut auth.jwt {
+                jwt.secret = secret.as_str().to_string();
+            }
+        }
+
+        // Override log directory with computed XDG path.
+        if let Some(file_appender) = &mut config.logger.file_appender {
+            file_appender.dir = Some(dirs.logs_dir.to_string_lossy().to_string());
+        }
+
+        Ok(config)
+    }
+
     async fn boot(
         mode: StartMode,
         environment: &Environment,

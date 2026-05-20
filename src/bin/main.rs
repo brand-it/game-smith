@@ -1,12 +1,15 @@
-use game_smith::app::App;
+use game_smith::{app::App, create_data_dirs, resolve_data_home, AppDirs};
 use loco_rs::cli;
 use migration::Migrator;
 use std::io::Write;
 
 fn main() -> loco_rs::Result<()> {
     game_smith::install_panic_hook();
-    ensure_app_data_dirs();
-    write_boot_log();
+
+    // Resolve app data directories once; reuse for dirs and boot log.
+    let dirs = AppDirs::new(resolve_data_home());
+    create_data_dirs(&dirs);
+    write_boot_log(&dirs);
 
     // Single-instance guard — must run before GTK and before tokio.
     let config = load_desktop_config();
@@ -53,67 +56,10 @@ fn main() -> loco_rs::Result<()> {
         .block_on(async { cli::main::<App, Migrator>().await })
 }
 
-fn ensure_app_data_dirs() {
-    let data_home = std::env::var("XDG_DATA_HOME")
-        .unwrap_or_else(|_| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
-    let app_dir = std::path::PathBuf::from(&data_home).join("game-smith");
-
-    // Ensure XDG_DATA_HOME is set so Tera config templates resolve correctly.
-    // SAFETY: single-threaded, before tokio runtime.
-    #[allow(unused_unsafe)]
-    unsafe {
-        std::env::set_var("XDG_DATA_HOME", &data_home);
-    }
-
-    // Create logs dir so the file appender doesn't emit a warning on first boot.
-    let logs_dir = app_dir.join("logs");
-    std::fs::create_dir_all(&logs_dir).expect("failed to create logs dir");
-
-    // Generate and persist a JWT secret if one isn't already set.
-    if std::env::var("GAME_SMITH_JWT_SECRET").is_ok() {
-        return;
-    }
-
-    let secret_path = app_dir.join("secret_key");
-
-    let secret = if secret_path.exists() {
-        std::fs::read_to_string(&secret_path)
-            .expect("failed to read secret_key file")
-            .trim()
-            .to_string()
-    } else {
-        let new_secret = uuid::Uuid::new_v4().to_string() + "-" + &uuid::Uuid::new_v4().to_string();
-        std::fs::write(&secret_path, &new_secret).expect("failed to write secret_key");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&secret_path, std::fs::Permissions::from_mode(0o600))
-                .expect("failed to set secret_key permissions");
-        }
-        eprintln!(
-            "game-smith: generated new JWT secret at {}",
-            secret_path.display()
-        );
-        new_secret
-    };
-
-    // SAFETY: called before tokio runtime starts; process is single-threaded here.
-    #[allow(unused_unsafe)]
-    unsafe {
-        std::env::set_var("GAME_SMITH_JWT_SECRET", secret);
-    }
-}
-
 /// Write a one-line boot record to a plain text file before anything else
 /// initializes. This gives us a breadcrumb even when tracing/journald miss it.
-fn write_boot_log() {
-    let data_home = std::env::var("XDG_DATA_HOME").unwrap_or_default();
-    if data_home.is_empty() {
-        return;
-    }
-    let path = std::path::PathBuf::from(&data_home)
-        .join("game-smith")
-        .join("boot.log");
+fn write_boot_log(dirs: &AppDirs) {
+    let path = dirs.app_dir.join("boot.log");
     let line = format!(
         "{} PID={} DISPLAY={} WAYLAND={} LOCO_ENV={}\n",
         std::time::SystemTime::now()
