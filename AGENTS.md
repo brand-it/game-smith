@@ -93,6 +93,23 @@ All of the above are available as `make` targets. Run `make help` for the full l
   reset         Full reset (remove DB + build artifacts)
 ```
 
+## Task Tracking
+
+You **MUST** create a todo list using `todo_write` at the start of every task that involves code changes. The list **MUST** include verification steps before you mark the task complete.
+
+### Required todo items for code changes
+
+Every todo list for code changes **MUST** include:
+
+- `Run make test` — all tests pass
+- `Run make qa` — fmt-check, lint, and tests all pass
+
+These are non-negotiable. Add them when you initialize the list; do not skip or drop them.
+
+### When to skip
+
+Skip the todo list only for trivial requests: single-line fixes, reading files, or answering questions that require no code changes.
+
 ## Code Conventions & Patterns
 
 ### Error Handling
@@ -188,15 +205,6 @@ async fn test_name() {
 - `seed::<App>(&ctx)` loads YAML fixtures from `src/fixtures/`.
 - `cleanup_user_model()` provides sensitive data filters for snapshots.
 - Test config: `config/test.yaml` (SQLite in-memory DB).
-
-## Post-Change Verification
-
-When making code changes, add these tasks to your todo list and run them before marking work complete:
-
-- `Run make test` — all tests pass
-- `Run make qa` — fmt-check, lint, and tests all pass
-
-These are required tasks on every todo list that involves code changes. Add them when you initialize the list; do not skip or drop them.
 
 ## Important Files
 
