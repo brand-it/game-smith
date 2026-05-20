@@ -1,3 +1,5 @@
+mod log_integration;
+
 mod models;
 mod requests;
 mod tasks;
