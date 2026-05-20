@@ -3,13 +3,54 @@ use loco_rs::cli;
 use migration::Migrator;
 use std::io::Write;
 
-// Route panics through tracing so they land in the file appender.
-// eprintln! ensures the message is always visible even before tracing init.
-fn install_panic_hook() {
-    std::panic::set_hook(Box::new(|info| {
-        eprintln!("PANIC: {info}");
-        tracing::error!(panic = %info, "process panicked");
-    }));
+fn main() -> loco_rs::Result<()> {
+    game_smith::install_panic_hook();
+    ensure_app_data_dirs();
+    write_boot_log();
+
+    // Single-instance guard — must run before GTK and before tokio.
+    let config = load_desktop_config();
+    let port = config.port;
+    if std::net::TcpListener::bind(format!("127.0.0.1:{port}")).is_err() {
+        eprintln!("game-smith: already running on port {port}, opening browser");
+        let _ = open::that(format!("http://127.0.0.1:{port}"));
+        return Ok(());
+    }
+
+    // GTK and the tray icon MUST be initialized on thread 0, before the tokio
+    // multi-thread runtime starts (which moves execution off the OS main thread).
+    let _desktop_handle = {
+        let config = load_desktop_config();
+        if config.enabled {
+            let server_url = format!("http://127.0.0.1:{}", config.port);
+            let manager = game_smith::desktop::DesktopManager::new(config, server_url);
+            // Only auto-open the browser when actually starting the server.
+            let is_start = std::env::args().nth(1).as_deref() == Some("start");
+            if is_start {
+                manager.open_browser();
+            }
+            let handle = manager.spawn_tray();
+            eprintln!(
+                "game-smith: tray handle = {}",
+                if handle.is_some() {
+                    "Some (created)"
+                } else {
+                    "None (failed)"
+                }
+            );
+            handle
+        } else {
+            eprintln!("game-smith: desktop disabled");
+            None
+        }
+    };
+
+    // Start the tokio runtime only after GTK/tray setup is complete.
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime")
+        .block_on(async { cli::main::<App, Migrator>().await })
 }
 
 fn ensure_app_data_dirs() {
@@ -61,55 +102,6 @@ fn ensure_app_data_dirs() {
     unsafe {
         std::env::set_var("GAME_SMITH_JWT_SECRET", secret);
     }
-}
-fn main() -> loco_rs::Result<()> {
-    install_panic_hook();
-    ensure_app_data_dirs();
-    write_boot_log();
-
-    // Single-instance guard — must run before GTK and before tokio.
-    let config = load_desktop_config();
-    let port = config.port;
-    if std::net::TcpListener::bind(format!("127.0.0.1:{port}")).is_err() {
-        eprintln!("game-smith: already running on port {port}, opening browser");
-        let _ = open::that(format!("http://127.0.0.1:{port}"));
-        return Ok(());
-    }
-
-    // GTK and the tray icon MUST be initialized on thread 0, before the tokio
-    // multi-thread runtime starts (which moves execution off the OS main thread).
-    let _desktop_handle = {
-        let config = load_desktop_config();
-        if config.enabled {
-            let server_url = format!("http://127.0.0.1:{}", config.port);
-            let manager = game_smith::desktop::DesktopManager::new(config, server_url);
-            // Only auto-open the browser when actually starting the server.
-            let is_start = std::env::args().nth(1).as_deref() == Some("start");
-            if is_start {
-                manager.open_browser();
-            }
-            let handle = manager.spawn_tray();
-            eprintln!(
-                "game-smith: tray handle = {}",
-                if handle.is_some() {
-                    "Some (created)"
-                } else {
-                    "None (failed)"
-                }
-            );
-            handle
-        } else {
-            eprintln!("game-smith: desktop disabled");
-            None
-        }
-    };
-
-    // Start the tokio runtime only after GTK/tray setup is complete.
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime")
-        .block_on(async { cli::main::<App, Migrator>().await })
 }
 
 /// Write a one-line boot record to a plain text file before anything else
