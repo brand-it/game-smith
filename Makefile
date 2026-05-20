@@ -1,6 +1,6 @@
-.PHONY: help setup setup-check dev dev-desktop watch \
-	test test-desktop fmt fmt-check lint qa \
-	migrate-gen migrate-up build build-desktop release package package-rpm install run-release clean reset
+.PHONY: help setup setup-check dev watch \
+	test fmt fmt-check lint qa \
+	migrate-gen migrate-up build release package package-rpm install run-release clean reset
 
 help:
 	@echo "Usage: make <target>"
@@ -11,12 +11,10 @@ help:
 	@echo ""
 	@echo "Development"
 	@echo "  dev           Start dev server (localhost:5150)"
-	@echo "  dev-desktop   Start dev server with desktop features (tray + browser)"
 	@echo "  watch         Auto-restart on file changes (requires cargo-watch)"
 	@echo ""
 	@echo "Quality"
 	@echo "  test          Run all tests"
-	@echo "  test-desktop  Run tests with desktop feature"
 	@echo "  fmt           Format code"
 	@echo "  fmt-check     Check formatting"
 	@echo "  lint          Run clippy with strict rules"
@@ -27,9 +25,8 @@ help:
 	@echo "  migrate-up    Run pending migrations"
 	@echo ""
 	@echo "Build"
-	@echo "  build         Build without features"
-	@echo "  build-desktop Build with desktop features"
-	@echo "  release       Production build with desktop features"
+	@echo "  build         Build (debug)"
+	@echo "  release       Production build"
 	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
 	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
 	@echo ""
@@ -50,18 +47,12 @@ setup-check:
 dev:
 	cargo run -- start
 
-dev-desktop:
-	cargo run -- start
-
 watch:
 	cargo watch -x "run -- start"
 
 # ── Quality ────────────────────────────────────────────────────────────
 
 test:
-	cargo test
-
-test-desktop:
 	cargo test
 
 fmt:
@@ -90,9 +81,6 @@ migrate-up:
 # ── Build ──────────────────────────────────────────────────────────────
 
 build:
-	cargo build
-
-build-desktop:
 	cargo build
 
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
