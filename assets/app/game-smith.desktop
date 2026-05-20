@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Game Smith
+Comment=Cross-platform game server management tool
+Exec=sh -c 'XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" LOCO_ENV=production LOCO_CONFIG_FOLDER=/usr/share/game-smith/config exec game-smith start'
+Path=/usr/share/game-smith
+Icon=game-smith
+Categories=Utility;
+Terminal=false
+StartupNotify=true

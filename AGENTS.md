@@ -39,7 +39,7 @@ src/bin/main.rs  →  cli::main::<App, Migrator>()  →  App implements Hooks
 | `migration/` | Database migrations (Sea-ORM Migrator) |
 | `assets/i18n/` | Fluent resource files |
 || `assets/i18n/_shared.ftl` | Shared Fluent terms (underscore prefix prevents ArcLoader from parsing as language tag) |
-|| `src/desktop/` | Desktop integration (tray, notifications, browser open) — behind `desktop` feature |
+|| `src/desktop/` | Desktop integration (tray, notifications, browser open) |
 || `assets/icons/` | Tray icon assets |
 || `tests/` | Integration tests organized by domain |
 ## Development Commands
@@ -51,11 +51,8 @@ cargo build
 # Run (development)
 cargo run
 
-# Build with desktop integration (tray icon, notifications, browser auto-open)
-cargo build --features desktop
-
-# Run with desktop integration
-cargo run --features desktop
+# Desktop integration is always included (tray icon, notifications, browser auto-open)
+cargo build
 
 # Format (check only)
 cargo fmt --all -- --check
@@ -79,19 +76,19 @@ All of the above are available as `make` targets. Run `make help` for the full l
   setup         Install system dependencies and configure local build
   setup-check   Check dependencies without installing
   dev           Start dev server (localhost:5150)
-  dev-desktop   Start dev server with desktop features
+  dev-desktop   Start dev server (alias for dev — desktop always included)
   watch         Auto-restart on file changes (requires cargo-watch)
   test          Run all tests
-  test-desktop  Run tests with desktop feature
+  test-desktop  Run tests (alias for test — desktop always included)
   fmt           Format code
   fmt-check     Check formatting
   lint          Run clippy with strict rules
   qa            Run fmt-check, lint, and test
   migrate-gen   Generate new migration (NAME=create_games)
   migrate-up    Run pending migrations
-  build         Build without features
-  build-desktop Build with desktop features
-  release       Production build with desktop features
+  build         Build release binary (desktop always included)
+  build-desktop Build release binary (alias for build)
+  release       Production build
   clean         Remove build artifacts
   reset         Full reset (remove DB + build artifacts)
 ```
@@ -128,16 +125,20 @@ All of the above are available as `make` targets. Run `make help` for the full l
 - Use `&str` over `&String` in function signatures (clippy `ptr_arg`).
 
 ### Local Environment
-- Machine-specific build configuration (library paths, linker overrides) belongs in `.cargo/config.local.toml`, which is gitignored.
-- Run `./scripts/setup.sh` to generate it; never commit changes to `.cargo/config.toml` that affect only your machine.
+- Linux requires GTK/appindicator system dependencies (`libgtk-3`, `libappindicator-gtk3`).
+- No libxdo symlink needed — `tray-icon` is compiled with `libxdo` feature disabled.
+
+### Install & Run
+- `make install` builds release binary and copies to `~/.local/bin/game-smith` (no reboot needed)
+- `make run-release` builds and runs directly from `target/release/`
+- Run `./target/release/game-smith start` or `game-smith start` from PATH
+
 ### Desktop Integration
-- Optional `desktop` Cargo feature adds system tray icon, desktop notifications, and browser auto-open.
-- Behind `#[cfg(feature = "desktop")]` — code does not compile when feature is absent.
+- System tray icon, desktop notifications, and browser auto-open are always compiled in (no feature flag).
 - Configured via environment variables: `GAME_SMITH_DESKTOP_ENABLED`, `GAME_SMITH_DESKTOP_OPEN_BROWSER`, `GAME_SMITH_DESKTOP_TRAY_ENABLED`, `GAME_SMITH_DESKTOP_TRAY_TOOLTIP`, `GAME_SMITH_PORT`.
 - Tray icon runs on a dedicated OS thread; menu events polled via `tray-icon`'s global channel.
-- Desktop features initialize in `src/bin/main.rs` before `cli::main()`.
-- Linux requires GTK/appindicator system dependencies when `desktop` feature is enabled.
-- **Linux libxdo workaround**: Fedora ships `libxdo.so.3` but not `libxdo.so`. Create `~/.local/lib/libxdo.so → /usr/lib64/libxdo.so.3` and ensure `~/.local/lib` is in `LIBRARY_PATH` (configured by `./scripts/setup.sh` in `.cargo/config.local.toml`).
+- GTK and tray icon are initialized on thread 0 in `src/bin/main.rs` before the tokio runtime starts.
+- Linux requires GTK/appindicator system dependencies (`libgtk-3`, `libappindicator-gtk3`).
 
 ## Testing & QA
 

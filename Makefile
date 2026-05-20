@@ -1,6 +1,6 @@
 .PHONY: help setup setup-check dev dev-desktop watch \
 	test test-desktop fmt fmt-check lint qa \
-	migrate-gen migrate-up build build-desktop release clean reset
+	migrate-gen migrate-up build build-desktop release package package-rpm install run-release clean reset
 
 help:
 	@echo "Usage: make <target>"
@@ -30,6 +30,8 @@ help:
 	@echo "  build         Build without features"
 	@echo "  build-desktop Build with desktop features"
 	@echo "  release       Production build with desktop features"
+	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
+	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
 	@echo ""
 	@echo "Cleanup"
 	@echo "  clean         Remove build artifacts"
@@ -49,7 +51,7 @@ dev:
 	cargo run -- start
 
 dev-desktop:
-	cargo run --features desktop -- start
+	cargo run -- start
 
 watch:
 	cargo watch -x "run -- start"
@@ -60,7 +62,7 @@ test:
 	cargo test
 
 test-desktop:
-	cargo test --features desktop
+	cargo test
 
 fmt:
 	cargo fmt --all
@@ -91,10 +93,45 @@ build:
 	cargo build
 
 build-desktop:
-	cargo build --features desktop
+	cargo build
 
+VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+
+package:
+	NO_STRIP=1 cargo packager --release
+	@echo ""
+	@echo "Packages built:"
+	@ls -1 target/release/game-smith_$(VERSION)* target/release/game-smith-$(VERSION)* 2>/dev/null | sed 's/^/  /'
+package-rpm: package
+	podman run --rm --security-opt label=disable \
+	  -v "$(shell pwd):/app:ro" \
+	  -v "$(shell pwd)/target/release:/out" \
+	  fedora:41 bash -c " \
+	    dnf install -y rpm-build 2>/dev/null | tail -3 && \
+	    rpmbuild -bb /app/packaging/rpm/game-smith.spec \
+	      --define '_rpmdir /out' \
+	      --define 'srcdir /app' \
+	      --define 'version $(VERSION)' \
+	  "
+	@echo ""
+	@echo "Packages built:"
+	@ls -1 target/release/game-smith_$(VERSION)* target/release/game-smith-$(VERSION)* \
+	        target/release/x86_64/game-smith-$(VERSION)*.rpm 2>/dev/null | sed 's/^/  /'
+
+
+# ── Install & Run ──────────────────────────────────────────────────────
+
+# Build and install to ~/.local/bin (no reboot needed)
+install: release
+	install -Dm755 target/release/game-smith $(HOME)/.local/bin/game-smith
+	@echo ""
+	@echo "Installed to $$HOME/.local/bin/game-smith"
+
+# Build and run directly (for testing changes without install)
+run-release: release
+	./target/release/game-smith start
 release:
-	cargo build --release --features desktop
+	cargo build --release
 
 # ── Cleanup ────────────────────────────────────────────────────────────
 

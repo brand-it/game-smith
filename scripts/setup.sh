@@ -22,7 +22,6 @@ step()  { echo -e "${CYAN}[step]${NC} $*"; }
 # OS / distro detection
 OS_TYPE=""
 REQUIRED_PACKAGES=""
-NEEDS_LIBXDO_SYMLINK=false
 USE_BREW=false
 
 detect_os() {
@@ -53,22 +52,19 @@ detect_os() {
     if [[ "$id" == "fedora" ]] || [[ "$id_like" == *"fedora"* ]]; then
         info "Detected Fedora"
         OS_TYPE="fedora"
-        REQUIRED_PACKAGES="gtk3-devel libappindicator-gtk3-devel xdotool"
-        NEEDS_LIBXDO_SYMLINK=true
+        REQUIRED_PACKAGES="gtk3-devel libappindicator-gtk3-devel"
     elif [[ "$id" == "ubuntu" || "$id" == "debian" || "$id_like" == *"debian"* ]]; then
         info "Detected Debian/Ubuntu"
         OS_TYPE="debian"
-        REQUIRED_PACKAGES="libgtk-3-dev libappindicator3-dev xdotool"
-        NEEDS_LIBXDO_SYMLINK=true
+        REQUIRED_PACKAGES="libgtk-3-dev libappindicator3-dev"
     elif [[ "$id" == "arch" || "$id_like" == *"arch"* ]]; then
         info "Detected Arch Linux"
         OS_TYPE="arch"
-        REQUIRED_PACKAGES="gtk3 libappindicator-gtk3 xdotool"
+        REQUIRED_PACKAGES="gtk3 libappindicator-gtk3"
     elif [[ "$id" == "opensuse-tumbleweed" || "$id" == "sles" || "$id_like" == *"suse"* ]]; then
         info "Detected openSUSE"
         OS_TYPE="suse"
-        REQUIRED_PACKAGES="gtk3-devel libappindicator3-devel xdotool"
-        NEEDS_LIBXDO_SYMLINK=true
+        REQUIRED_PACKAGES="gtk3-devel libappindicator3-devel"
     else
         warn "Unknown distribution: $id"
         OS_TYPE="unknown"
@@ -145,52 +141,11 @@ check_dependencies() {
     step "Checking desktop feature dependencies..."
     check_dep "GTK3 dev headers" "pkg-config --exists gtk+-3.0" || missing=true
     check_dep "libappindicator" "pkg-config --exists libappindicator-gtk3" || missing=true
-    check_dep "xdotool" "command -v xdotool" || missing=true
 
     if [[ "$missing" == false ]]; then
         return 0
     fi
     return 1
-}
-
-create_libxdo_symlink() {
-    info "Creating libxdo symlink..."
-
-    local lib_path=""
-    for candidate in /usr/lib64/libxdo.so.* /usr/lib/x86_64-linux-gnu/libxdo.so.* /usr/lib/libxdo.so.*; do
-        if [ -f "$candidate" ]; then
-            lib_path="$candidate"
-            break
-        fi
-    done
-
-    if [ -z "$lib_path" ]; then
-        warn "libxdo.so not found. Install xdotool first."
-        return
-    fi
-
-    local local_lib="$HOME/.local/lib"
-    mkdir -p "$local_lib"
-    ln -sf "$lib_path" "$local_lib/libxdo.so"
-    info "  Created $local_lib/libxdo.so -> $lib_path"
-}
-
-configure_cargo() {
-    info "Configuring .cargo/config.local.toml..."
-
-    local config="$PROJECT_ROOT/.cargo/config.local.toml"
-    local local_lib="$HOME/.local/lib"
-
-    mkdir -p "$PROJECT_ROOT/.cargo"
-
-    # Use local config instead of committed one
-    cat > "$config" << EOF
-# Local environment configuration for desktop feature
-[env]
-LIBRARY_PATH = "$local_lib"
-EOF
-
-    info "  Created $config"
 }
 
 main() {
@@ -219,7 +174,6 @@ main() {
         echo ""
         info "Build the project with:"
         echo "  cargo run -- start"
-        echo "  cargo run --features desktop -- start   # with tray icon & browser auto-open"
         return 0
     fi
 
@@ -230,15 +184,9 @@ main() {
         install_packages
     else
         error "Cannot determine packages for this platform."
-        error "Install GTK3, libappindicator, and xdotool manually."
+        error "Install GTK3 and libappindicator manually."
         exit 1
     fi
-
-    # Post-install: non-root setup
-    echo ""
-    step "Configuring local build environment..."
-    create_libxdo_symlink
-    configure_cargo
 
     echo ""
     info "Setup complete!"

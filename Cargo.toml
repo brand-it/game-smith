@@ -5,7 +5,8 @@ name = "game-smith"
 version = "0.1.0"
 edition = "2021"
 publish = false
-default-run = "game_smith-cli"
+default-run = "game-smith"
+authors = ["brand-it"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -41,16 +42,16 @@ unic-langid = { version = "0.9" }
 # /view engine
 axum-extra = { version = "0.10", features = ["form"] }
 
-# desktop integration (optional)
-tray-icon = { version = "0.24", optional = true }
-gtk = { version = "0.18", optional = true }
-notify-rust = { version = "4", optional = true }
-open = { version = "5", optional = true }
-[features]
-default = []
-desktop = ["dep:tray-icon", "dep:gtk", "dep:notify-rust", "dep:open"]
+open = { version = "5" }
+
+# desktop integration (Linux only)
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
+gtk = { version = "0.18" }
+glib = { version = "0.18" }
+notify-rust = { version = "4" }
 [[bin]]
-name = "game_smith-cli"
+name = "game-smith"
 path = "src/bin/main.rs"
 required-features = []
 [dev-dependencies]
@@ -58,3 +59,19 @@ loco-rs = { workspace = true, features = ["testing"] }
 serial_test = { version = "3.1.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }
+
+[package.metadata.packager]
+before-packaging-command = "cargo build --release"
+product-name = "Game Smith"
+identifier = "com.gamesmith.app"
+category = "Utility"
+license-file = "LICENSE"
+homepage = "https://github.com/brand-it/game-smith"
+description = "Cross-platform game server management tool"
+icons = ["assets/icons/game-smith-256.png", "assets/icons/game-smith-48.png"]
+formats = ["deb", "appimage"]
+authors = ["brand-it <brandit@example.com>"]
+
+[package.metadata.packager.deb]
+desktop-template = "assets/app/game-smith.desktop"
+depends = ["libgtk-3-0", "libappindicator3-1"]

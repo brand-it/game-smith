@@ -1,0 +1,40 @@
+name: Build & Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libappindicator3-dev \
+            libxdo-dev \
+            xdotool \
+            dpkg-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked --quiet
+
+      - name: Build & package
+        run: make package
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-smith-deb
+          path: target/release/*.deb
+          retention-days: 30

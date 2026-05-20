@@ -74,9 +74,74 @@ make dev-desktop
 
 # Production (SQLite + background workers)
 make release
-./target/release/game_smith-cli start
+./target/release/game-smith start
 ```
 
+## Installation
+
+### Linux (`.deb` — Debian, Ubuntu, and derivatives)
+
+Download the latest `.deb` from the [releases page](https://github.com/brand-it/game-smith/releases) and install it:
+
+```sh
+sudo dpkg -i game-smith_*.deb
+sudo apt-get install -f   # resolves any missing dependencies
+```
+
+This installs:
+- `/usr/bin/game-smith` — the server binary
+- `/usr/share/applications/game-smith.desktop` — app launcher entry
+- `/usr/share/icons/hicolor/*/apps/game-smith.png` — application icons
+
+After installation the **Game Smith** icon appears in your application launcher under Utilities. Clicking it starts the server; a tray icon appears in your system tray with options to open the dashboard or quit.
+
+### Linux (Fedora / Bazzite / rpm-ostree)
+
+Install the `.rpm` package. The change takes effect after a reboot (or immediately with `--apply-live`):
+
+```sh
+rpm-ostree install game-smith-0.1.0-1.x86_64.rpm
+# Optional: apply without rebooting
+rpm-ostree install --apply-live game-smith-0.1.0-1.x86_64.rpm
+```
+
+This installs:
+- `/usr/bin/game-smith` — the server binary
+- `/usr/share/applications/game-smith.desktop` — app launcher entry
+- `/usr/share/icons/hicolor/*/apps/game-smith.png` — application icons
+
+### Linux (AppImage — any distro, no install)
+
+The `.AppImage` is self-contained. Download it, mark it executable, and run it:
+
+```sh
+chmod +x game-smith_0.1.0_x86_64.AppImage
+./game-smith_0.1.0_x86_64.AppImage start
+```
+
+To integrate with your desktop launcher:
+```sh
+mkdir -p ~/Applications
+mv game-smith_0.1.0_x86_64.AppImage ~/Applications/game-smith.AppImage
+# The tray icon and desktop entry are handled by the app itself
+```
+
+### Uninstalling
+
+**Debian/Ubuntu:**
+```sh
+sudo dpkg -r game-smith
+```
+
+**Fedora / Bazzite (rpm-ostree):**
+```sh
+rpm-ostree uninstall game-smith
+```
+
+**AppImage:**
+```sh
+rm ~/Applications/game-smith.AppImage
+```
 ## Development
 
 ### Setup

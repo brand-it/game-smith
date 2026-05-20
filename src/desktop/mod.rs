@@ -9,7 +9,7 @@ use std::process;
 
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem},
-    Icon, TrayIcon, TrayIconBuilder,
+    Icon, TrayIconBuilder,
 };
 
 /// Menu item identifier for the "Open Dashboard" action.
@@ -80,9 +80,7 @@ impl DesktopConfig {
 ///
 /// The tray icon remains alive as long as this handle is held.
 /// Dropping this handle removes the tray icon from the system tray.
-pub struct DesktopHandle {
-    _tray_icon: TrayIcon,
-}
+pub struct DesktopHandle {}
 
 /// Manages desktop integration: tray icon, notifications, browser auto-open.
 pub struct DesktopManager {
@@ -112,40 +110,74 @@ impl DesktopManager {
             return None;
         }
 
-        // GTK must be initialized on the main thread before creating UI elements
-        gtk::init().expect("failed to initialize GTK");
-
         let tooltip = self.config.tray.tooltip.clone();
         let server_url = self.server_url.clone();
 
-        let icon = create_icon();
-        let menu = build_menu();
+        // libappindicator requires a GTK main loop to keep its D-Bus connection
+        // alive. We run gtk::init() + build the tray + gtk::main() all on one
+        // dedicated thread so the event loop never blocks the tokio runtime.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Option<String>>(0);
 
-        let tray = TrayIconBuilder::new()
-            .with_tooltip(&tooltip)
-            .with_menu(Box::new(menu))
-            .with_icon(icon)
-            .build()
-            .inspect_err(|e| tracing::error!(error = %e, "failed to create tray icon"))
-            .ok()?;
-
-        // Spawn a thread to poll menu events.
         std::thread::spawn(move || {
-            let rx = MenuEvent::receiver();
-            for event in rx.iter() {
-                match event.id.as_ref() {
-                    MENU_OPEN => {
-                        let _ = open::that(&server_url);
-                    }
-                    MENU_QUIT => {
-                        process::exit(0);
-                    }
-                    _ => {}
-                }
+            if let Err(e) = gtk::init() {
+                eprintln!("game-smith: GTK init failed ({e}) — tray disabled");
+                let _ = tx.send(Some(format!("gtk init failed: {e}")));
+                return;
             }
+
+            let icon = create_icon();
+            let menu = build_menu();
+
+            let tray = match TrayIconBuilder::new()
+                .with_id("game-smith")
+                .with_tooltip(&tooltip)
+                .with_menu(Box::new(menu))
+                .with_icon(icon)
+                .build()
+            {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("game-smith: failed to create tray icon: {e}");
+                    let _ = tx.send(Some(format!("tray build failed: {e}")));
+                    return;
+                }
+            };
+
+            // Signal success — tray is registered, main loop about to start.
+            let _ = tx.send(None);
+
+            // Handle menu events via glib idle so they run on the GTK thread.
+            let rx_menu = MenuEvent::receiver().clone();
+            glib::idle_add(move || {
+                while let Ok(event) = rx_menu.try_recv() {
+                    match event.id.as_ref() {
+                        MENU_OPEN => { let _ = open::that(&server_url); }
+                        MENU_QUIT => { process::exit(0); }
+                        _ => {}
+                    }
+                }
+                // Keep the idle callback registered.
+                glib::ControlFlow::Continue
+            });
+
+            // Block this thread running the GTK event loop.
+            // This keeps the libappindicator D-Bus connection alive.
+            let _keep_alive = tray;
+            gtk::main();
         });
 
-        Some(DesktopHandle { _tray_icon: tray })
+        // Wait for the GTK thread to confirm tray creation before returning.
+        match rx.recv() {
+            Ok(None) => Some(DesktopHandle {}),
+            Ok(Some(e)) => {
+                eprintln!("game-smith: tray failed: {e}");
+                None
+            }
+            Err(_) => {
+                eprintln!("game-smith: tray thread died unexpectedly");
+                None
+            }
+        }
     }
 
     /// Opens the default browser to the server URL.

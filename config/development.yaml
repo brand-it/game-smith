@@ -13,15 +13,25 @@ logger:
   # By default the logger has filtering only logs that came from your code or logs that came from `loco` framework. to see all third party libraries
   # Uncomment the line below to override to see all third party libraries you can enable this config and override the logger filters.
   # override_filter: trace
+  file_appender:
+    enable: true
+    non_blocking: true
+    level: debug
+    format: json
+    rotation: daily
+    dir: {{ get_env(name="XDG_DATA_HOME", default="/home/brandit/.local/share") }}/game-smith/logs
+    filename_prefix: game-smith
+    filename_suffix: log
+    max_log_files: 7
 
 # Web server configuration
 server:
   # Port on which the server will listen. the server binding is 0.0.0.0:{PORT}
   port: 5150
   # Binding for the server (which interface to bind to)
-  binding: localhost
+  binding: 127.0.0.1
   # The UI hostname or IP address that mailers will point to.
-  host: http://localhost
+  host: http://127.0.0.1
   # Out of the box middleware configuration. to disable middleware you can changed the `enable` field to `false` of comment the middleware block
   middlewares:
     static:
@@ -94,7 +104,7 @@ auth:
   # JWT authentication
   jwt:
     # Secret key for token generation and verification
-    secret: va4tJA01aenjBws4INsm
+    secret: {{ get_env(name="GAME_SMITH_JWT_SECRET", default="dev-only-insecure-secret") }}
     # Token expiration time in seconds
     expiration: 604800 # 7 days
 
