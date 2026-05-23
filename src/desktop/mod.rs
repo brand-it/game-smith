@@ -7,7 +7,7 @@ mod notifications;
 
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem},
-    Icon, TrayIconBuilder,
+    Icon, TrayIcon, TrayIconBuilder,
 };
 
 /// Menu item identifier for the "Open Dashboard" action.
@@ -144,48 +144,7 @@ impl DesktopManager {
 
             let _ = tx.send(None);
 
-            #[cfg(target_os = "linux")]
-            {
-                // libappindicator requires a GTK main loop to keep its D-Bus
-                // connection alive. Menu events are polled via glib idle.
-                let rx_menu = MenuEvent::receiver().clone();
-                glib::idle_add(move || {
-                    while let Ok(event) = rx_menu.try_recv() {
-                        handle_menu_event(&event, &server_url);
-                    }
-                    glib::ControlFlow::Continue
-                });
-                let _keep_alive = tray;
-                gtk::main();
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                // Windows requires a Win32 message pump to keep the tray icon
-                // responsive. Menu events are polled during idle time.
-                use windows::Win32::Foundation::{HWND, MSG};
-                use windows::Win32::UI::WindowsAndMessaging::{
-                    DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE,
-                };
-
-                let rx_menu = MenuEvent::receiver().clone();
-                let _keep_alive = tray;
-                let mut msg = unsafe { std::mem::zeroed::<MSG>() };
-                loop {
-                    // Drain pending menu events.
-                    while let Ok(event) = rx_menu.try_recv() {
-                        handle_menu_event(&event, &server_url);
-                    }
-                    // Non-blocking message pump with brief sleep to avoid busy-wait.
-                    if unsafe { PeekMessageW(&mut msg, HWND::default(), 0, 0, PM_REMOVE).as_bool() }
-                    {
-                        unsafe { TranslateMessage(&msg) };
-                        unsafe { DispatchMessageW(&msg) };
-                    } else {
-                        std::thread::sleep(std::time::Duration::from_millis(16));
-                    }
-                }
-            }
+            run_tray_event_loop(tray, server_url);
         });
 
         match rx.recv() {
@@ -282,4 +241,50 @@ fn create_icon() -> Icon {
     }
 
     Icon::from_rgba(pixels, size, size).expect("failed to create procedural icon")
+}
+
+/// Runs the OS-specific event loop required to keep the tray icon responsive.
+///
+/// On Linux this drives the GTK main loop; on Windows this runs a Win32
+/// message pump. Menu events are drained from the channel and dispatched
+/// to [`handle_menu_event`].
+///
+/// This function diverges and never returns.
+#[cfg(target_os = "linux")]
+fn run_tray_event_loop(tray: TrayIcon, server_url: String) -> ! {
+    let rx_menu = MenuEvent::receiver().clone();
+    glib::idle_add(move || {
+        while let Ok(event) = rx_menu.try_recv() {
+            handle_menu_event(&event, &server_url);
+        }
+        glib::ControlFlow::Continue
+    });
+    let _keep_alive = tray;
+    gtk::main();
+    unreachable!("gtk::main() should not return")
+}
+
+#[cfg(target_os = "windows")]
+fn run_tray_event_loop(tray: TrayIcon, server_url: String) -> ! {
+    use windows::Win32::Foundation::{HWND, MSG};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE,
+    };
+
+    let rx_menu = MenuEvent::receiver().clone();
+    let _keep_alive = tray;
+    let mut msg = unsafe { std::mem::zeroed::<MSG>() };
+    loop {
+        // Drain pending menu events.
+        while let Ok(event) = rx_menu.try_recv() {
+            handle_menu_event(&event, &server_url);
+        }
+        // Non-blocking message pump with brief sleep to avoid busy-wait.
+        if unsafe { PeekMessageW(&mut msg, HWND::default(), 0, 0, PM_REMOVE).as_bool() } {
+            unsafe { TranslateMessage(&msg) };
+            unsafe { DispatchMessageW(&msg) };
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+    }
 }
