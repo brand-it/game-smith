@@ -5,18 +5,15 @@ use loco_rs::{
     boot::{create_app, BootResult, StartMode},
     config::Config,
     controller::AppRoutes,
-    db::{self, truncate_table},
     environment::Environment,
     task::Tasks,
     Result,
 };
-use migration::Migrator;
-use std::path::Path;
+use migration::{seaql_migrations, Migrator, MigratorTrait};
+use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter};
 
 #[allow(unused_imports)]
-use crate::{
-    controllers, initializers, models::_entities::users, tasks, workers::downloader::DownloadWorker,
-};
+use crate::{initializers, tasks, workers::downloader::DownloadWorker};
 
 pub struct App;
 #[async_trait]
@@ -43,22 +40,16 @@ impl Hooks for App {
 
         let mut config = Config::new(env)?;
         let dirs = super::AppDirs::new(super::resolve_data_home());
-        let secret = super::JwtSecret::load_or_generate(&dirs.secret_path);
 
         // Override database URI with computed XDG path.
         config.database.uri = dirs.db_uri();
-
-        // Override JWT secret with persisted secret.
-        if let Some(auth) = &mut config.auth {
-            if let Some(jwt) = &mut auth.jwt {
-                jwt.secret = secret.as_str().to_string();
-            }
-        }
 
         // Override log directory with computed XDG path.
         if let Some(file_appender) = &mut config.logger.file_appender {
             file_appender.dir = Some(dirs.logs_dir.to_string_lossy().to_string());
         }
+
+        clean_stale_migrations(&config.database.uri).await;
 
         Ok(config)
     }
@@ -78,8 +69,7 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes() // controller routes below
-            .add_route(controllers::auth::routes())
+        AppRoutes::with_default_routes()
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;
@@ -90,13 +80,45 @@ impl Hooks for App {
     fn register_tasks(tasks: &mut Tasks) {
         // tasks-inject (do not remove)
     }
-    async fn truncate(ctx: &AppContext) -> Result<()> {
-        truncate_table(&ctx.db, users::Entity).await?;
+    async fn truncate(_ctx: &AppContext) -> Result<()> {
         Ok(())
     }
-    async fn seed(ctx: &AppContext, base: &Path) -> Result<()> {
-        db::seed::<users::ActiveModel>(&ctx.db, &base.join("users.yaml").display().to_string())
-            .await?;
+    async fn seed(_ctx: &AppContext, _base: &std::path::Path) -> Result<()> {
         Ok(())
+    }
+}
+
+/// Remove `seaql_migrations` records for migrations that no longer exist in the
+/// codebase. Prevents boot failure when a previously-applied migration is deleted.
+pub async fn clean_stale_migrations(uri: &str) {
+    let db = match Database::connect(uri).await {
+        Ok(db) => db,
+        Err(e) => {
+            tracing::debug!(error = %e, "skipping stale migration cleanup: cannot connect");
+            return;
+        }
+    };
+
+    let available: Vec<String> = Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_owned())
+        .collect();
+
+    let applied = match seaql_migrations::Entity::find().all(&db).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = %e, "skipping stale migration cleanup: cannot read migration table");
+            return;
+        }
+    };
+
+    for record in applied {
+        if !available.iter().any(|s| s == &record.version) {
+            let _ = sea_orm::Delete::many(seaql_migrations::Entity)
+                .filter(seaql_migrations::Column::Version.eq(&record.version))
+                .exec(&db)
+                .await;
+            tracing::info!(migration = %record.version, "removed stale migration record");
+        }
     }
 }

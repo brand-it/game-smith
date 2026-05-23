@@ -39,25 +39,6 @@ workers:
   #   - BackgroundAsync - Workers operate asynchronously in the background, processing tasks with async capabilities.
   mode: ForegroundBlocking
 
-  
-
-# Mailer Configuration.
-mailer:
-  stub: true
-  # SMTP mailer configuration.
-  smtp:
-    # Enable/Disable smtp mailer.
-    enable: true
-    # SMTP server host. e.x localhost, smtp.gmail.com
-    host: localhost
-    # SMTP server port
-    port: 1025
-    # Use secure connection (SSL/TLS).
-    secure: false
-    # auth:
-    #   user:
-    #   password:
-
 # Initializers Configuration
 # initializers:
 #  oauth2:
@@ -85,15 +66,6 @@ database:
   dangerously_truncate: true
   # Recreating schema when application loaded.  This is a dangerous operation, make sure that you using this flag only on dev environments or test mode
   dangerously_recreate: true
-
-# Authentication Configuration
-auth:
-  # JWT authentication
-  jwt:
-    # Secret key for token generation and verification
-    secret: aroD4i0irsuYD4eiugRa
-    # Token expiration time in seconds
-    expiration: 604800 # 7 days
 
 # Desktop Integration Configuration
 desktop:
