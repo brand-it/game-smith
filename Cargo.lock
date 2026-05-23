@@ -1784,6 +1784,7 @@ dependencies = [
  "gtk",
  "include_dir",
  "insta",
+ "libc",
  "loco-rs",
  "log",
  "migration",

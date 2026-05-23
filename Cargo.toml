@@ -19,6 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
+  "process",
 ] }
 async-trait = { version = "0.1" }
 axum = { version = "0.8" }
@@ -52,6 +53,7 @@ tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
 gtk = { version = "0.18" }
 glib = { version = "0.18" }
 notify-rust = { version = "4" }
+libc = { version = "0.2" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tray-icon = { version = "0.24", default-features = false }

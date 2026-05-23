@@ -13,7 +13,12 @@ use migration::{seaql_migrations, Migrator, MigratorTrait};
 use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter};
 
 #[allow(unused_imports)]
-use crate::{initializers, tasks, workers::downloader::DownloadWorker};
+use crate::{
+    initializers, tasks,
+    workers::{
+        command_exec::CommandExecWorker, downloader::DownloadWorker, log_cleanup::LogCleanupWorker,
+    },
+};
 
 pub struct App;
 #[async_trait]
@@ -73,6 +78,8 @@ impl Hooks for App {
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;
+        queue.register(CommandExecWorker::build(ctx)).await?;
+        queue.register(LogCleanupWorker::build(ctx)).await?;
         Ok(())
     }
 
