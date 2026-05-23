@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+use axum::routing::get;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     bgworker::{BackgroundWorker, Queue},
     boot::{create_app, BootResult, StartMode},
     config::Config,
-    controller::AppRoutes,
+    controller::{AppRoutes, Routes},
     environment::Environment,
     task::Tasks,
     Result,
@@ -75,7 +76,9 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes().add_route(controllers::commands::routes())
+        AppRoutes::with_default_routes()
+            .add_route(controllers::commands::routes())
+            .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;

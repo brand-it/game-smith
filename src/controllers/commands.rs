@@ -3,7 +3,6 @@ use loco_rs::controller::views::{engines::TeraView, ViewEngine};
 use loco_rs::prelude::*;
 
 use crate::models::command_runs::Model as CommandRunModel;
-
 /// GET /commands — list the most recent command runs.
 ///
 /// # Errors

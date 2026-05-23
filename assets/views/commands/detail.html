@@ -1,101 +1,87 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Command Run #{{ run.id }}</title>
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-    <script src="/static/js/vendor/socket.io.min.js"></script>
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        <div class="flex items-center justify-between">
-            <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Command Run #{{ run.id }}</h1>
-            <a href="/commands" class="text-sm text-blue-600 hover:underline">Back to list</a>
-        </div>
+{% extends "_layout/base.html" %}
+{% import "_macros/status_badge.html" as macros %}
 
-        <!-- Metadata -->
-        <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Command</dt>
-                <dd class="mt-1 truncate font-mono text-sm text-gray-900">{{ run.command }}</dd>
-            </div>
+{% block title %}{{ t(key="commands-detail-title", id=run.id, lang="en-US") }}{% endblock %}
 
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Status</dt>
-                <dd class="mt-1">
-                    {% if run.status == "running" %}
-                    <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
-                        <span class="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                        <span id="status-badge">{{ run.status }}</span>
-                    </span>
-                    {% elif run.status == "finished" %}
-                    <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800" id="status-badge">{{ run.status }}</span>
-                    {% elif run.status == "failed" %}
-                    <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800" id="status-badge">{{ run.status }}</span>
-                    {% elif run.status == "stopped" %}
-                    <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800" id="status-badge">{{ run.status }}</span>
-                    {% else %}
-                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-800" id="status-badge">{{ run.status }}</span>
-                    {% endif %}
-                </dd>
-            </div>
+{% block extra_head %}
+<script src="/static/js/vendor/socket.io.min.js"></script>
+{% endblock %}
 
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Exit Code</dt>
-                <dd class="mt-1 font-mono text-sm text-gray-900" id="exit-code">{{ run.exit_code|default(value="—") }}</dd>
-            </div>
+{% block content %}
+<div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">{{ t(key="commands-detail-title", id=run.id, lang="en-US") }}</h1>
+    <a href="/commands" class="text-sm text-blue-600 hover:underline">{{ t(key="commands-back", lang="en-US") }}</a>
+</div>
 
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Started</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ run.started_at }}</dd>
-            </div>
-
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Completed</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ run.completed_at|default(value="—") }}</dd>
-            </div>
-
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Working Dir</dt>
-                <dd class="mt-1 truncate font-mono text-sm text-gray-900">{{ run.working_dir|default(value="—") }}</dd>
-            </div>
-
-            <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-                <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">PID</dt>
-                <dd class="mt-1 font-mono text-sm text-gray-900">{{ run.pid|default(value="—") }}</dd>
-            </div>
-        </dl>
-
-        <!-- Args -->
-        <div class="mt-6 rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">Arguments</dt>
-            <dd class="mt-2"><code class="rounded bg-gray-100 px-2 py-1 font-mono text-sm text-gray-800">{{ run.args }}</code></dd>
-        </div>
-
-        <!-- Log output -->
-        <h2 class="mt-8 text-lg font-semibold text-gray-900">Log Output</h2>
-
-        {% if run.is_running %}
-        <div class="mt-2 flex items-center gap-2">
-            <span class="relative flex h-2 w-2">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
-            <span class="text-sm font-medium text-blue-600" id="live-indicator">Live</span>
-        </div>
-        {% else %}
-        <p class="mt-2 text-sm text-gray-500 italic" id="final-status">
-            Run completed with status: <strong class="text-gray-700">{{ run.status }}</strong>
-        </p>
-        {% endif %}
-
-        <pre id="log-output" class="mt-4 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300"></pre>
+<!-- Metadata -->
+<dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-command", lang="en-US") }}</dt>
+        <dd class="mt-1 truncate font-mono text-sm text-gray-900">{{ run.command }}</dd>
     </div>
 
-    <script src="/static/js/commands.js"></script>
-    <script>
-        connectToCommand({{ run.id }}, "{{ run.status }}");
-    </script>
-</body>
-</html>
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-status", lang="en-US") }}</dt>
+        <dd class="mt-1">
+            <span id="status-badge">{{ macros::status_badge(status=run.status) }}</span>
+        </dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-exit-code", lang="en-US") }}</dt>
+        <dd class="mt-1 font-mono text-sm text-gray-900" id="exit-code">{{ run.exit_code|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-started", lang="en-US") }}</dt>
+        <dd class="mt-1 text-sm text-gray-900">{{ run.started_at }}</dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-completed", lang="en-US") }}</dt>
+        <dd class="mt-1 text-sm text-gray-900">{{ run.completed_at|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-working-dir", lang="en-US") }}</dt>
+        <dd class="mt-1 truncate font-mono text-sm text-gray-900">{{ run.working_dir|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-pid", lang="en-US") }}</dt>
+        <dd class="mt-1 font-mono text-sm text-gray-900">{{ run.pid|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+    </div>
+</dl>
+
+<!-- Arguments -->
+<div class="mt-6 rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+    <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-arguments", lang="en-US") }}</dt>
+    <dd class="mt-2"><code class="rounded bg-gray-100 px-2 py-1 font-mono text-sm text-gray-800">{{ run.args }}</code></dd>
+</div>
+
+<!-- Log output -->
+<h2 class="mt-8 text-lg font-semibold text-gray-900">{{ t(key="commands-detail-log-output", lang="en-US") }}</h2>
+
+{% if run.is_running %}
+<div class="mt-2 flex items-center gap-2">
+    <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+    </span>
+    <span class="text-sm font-medium text-blue-600" id="live-indicator">{{ t(key="commands-detail-live", lang="en-US") }}</span>
+</div>
+{% else %}
+<p class="mt-2 text-sm text-gray-500 italic" id="final-status">
+    {{ t(key="commands-detail-completed-status", status=run.status, lang="en-US") }}
+</p>
+{% endif %}
+
+<pre id="log-output" class="mt-4 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300"></pre>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/commands.js"></script>
+<script>
+    connectToCommand({{ run.id }}, "{{ run.status }}");
+</script>
+{% endblock %}

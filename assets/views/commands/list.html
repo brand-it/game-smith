@@ -1,62 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Command Runs</title>
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">Command Runs</h1>
+{% extends "_layout/base.html" %}
+{% import "_macros/status_badge.html" as macros %}
 
-        {% if runs|length > 0 %}
-        <div class="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table class="w-full text-left text-sm">
-                <thead class="bg-gray-50 text-gray-500">
-                    <tr>
-                        <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">ID</th>
-                        <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">Command</th>
-                        <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">Status</th>
-                        <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">Exit</th>
-                        <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">Started</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    {% for run in runs %}
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-4 py-3">
-                            <a href="/commands/{{ run.id }}" class="font-mono text-blue-600 hover:underline">{{ run.id }}</a>
-                        </td>
-                        <td class="px-4 py-3 font-medium text-gray-900">{{ run.command }}</td>
-                        <td class="px-4 py-3">
-                            {% if run.status == "running" %}
-                            <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
-                                <span class="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                                {{ run.status }}
-                            </span>
-                            {% elif run.status == "finished" %}
-                            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">{{ run.status }}</span>
-                            {% elif run.status == "failed" %}
-                            <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">{{ run.status }}</span>
-                            {% elif run.status == "stopped" %}
-                            <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">{{ run.status }}</span>
-                            {% else %}
-                            <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-800">{{ run.status }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="px-4 py-3 text-gray-600">{{ run.exit_code|default(value="") }}</td>
-                        <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ run.started_at }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="mt-6 rounded-lg border border-gray-200 bg-white px-6 py-12 text-center shadow-sm">
-            <p class="text-gray-500">No command runs found.</p>
-        </div>
-        {% endif %}
-    </div>
-</body>
-</html>
+{% block title %}{{ t(key="commands-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-900 sm:text-3xl">{{ t(key="commands-title", lang="en-US") }}</h1>
+
+{% if runs|length > 0 %}
+<div class="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+    <table class="w-full text-left text-sm">
+        <thead class="bg-gray-50 text-gray-500">
+            <tr>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-id", lang="en-US") }}</th>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-command", lang="en-US") }}</th>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-status", lang="en-US") }}</th>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-exit", lang="en-US") }}</th>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-started", lang="en-US") }}</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for run in runs %}
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-3">
+                    <a href="/commands/{{ run.id }}" class="font-mono text-blue-600 hover:underline">{{ run.id }}</a>
+                </td>
+                <td class="px-4 py-3 font-medium text-gray-900">{{ run.command }}</td>
+                <td class="px-4 py-3">
+                    {{ macros::status_badge(status=run.status) }}
+                </td>
+                <td class="px-4 py-3 text-gray-600">{{ run.exit_code|default(value="") }}</td>
+                <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ run.started_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="mt-6 rounded-lg border border-gray-200 bg-white px-6 py-12 text-center shadow-sm">
+    <p class="text-gray-500">{{ t(key="commands-no-runs", lang="en-US") }}</p>
+</div>
+{% endif %}
+{% endblock %}
