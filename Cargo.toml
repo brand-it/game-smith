@@ -14,7 +14,7 @@ authors = ["brand-it"]
 loco-rs = { version = "0.16" }
 
 [dependencies]
-loco-rs = { workspace = true  }
+loco-rs = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 tokio = { version = "1.45", default-features = false, features = [
@@ -45,12 +45,20 @@ axum-extra = { version = "0.10", features = ["form"] }
 
 open = { version = "5" }
 
-# desktop integration (Linux only)
+# desktop integration (Linux: GTK, Windows: Win32)
+
 [target.'cfg(target_os = "linux")'.dependencies]
 tray-icon = { version = "0.24", default-features = false, features = ["gtk"] }
 gtk = { version = "0.18" }
 glib = { version = "0.18" }
 notify-rust = { version = "4" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tray-icon = { version = "0.24", default-features = false }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }
 [[bin]]
 name = "game-smith"
 path = "src/bin/main.rs"
@@ -71,8 +79,8 @@ homepage = "https://github.com/brand-it/game-smith"
 description = "Cross-platform game server management tool"
 icons = ["assets/icons/game-smith-256.png", "assets/icons/game-smith-48.png"]
 formats = ["deb", "appimage"]
-authors = ["brand-it <brandit@example.com>"]
+authors = ["brand-it <brandt@lareaus.com>"]
 
 [package.metadata.packager.deb]
-desktop-template = "assets/app/game-smith.desktop"
+desktop-template = "game-smith.desktop"
 depends = ["libgtk-3-0", "libappindicator3-1"]
