@@ -103,7 +103,7 @@ $(TAILWIND_CLI):
 # Compile Tailwind CSS from source to static assets
 build-css: $(TAILWIND_CLI)
 	$(TAILWIND_CLI) -i assets/css/tailwind.css -o assets/static/css/tailwind.css \
-	  --config tailwind.config.js --minify
+	  --minify
 
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
