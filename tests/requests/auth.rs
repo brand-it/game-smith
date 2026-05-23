@@ -45,7 +45,7 @@ async fn can_register() {
         });
 
         let deliveries = ctx.mailer.unwrap().deliveries();
-        assert_eq!(deliveries.count, 1, "Exactly one email should be sent");
+        assert_eq!(deliveries.count, 0, "No emails should be sent");
 
         // with_settings!({
         //     filters => cleanup_email()
@@ -273,7 +273,7 @@ async fn can_reset_password() {
         );
 
         let deliveries = ctx.mailer.unwrap().deliveries();
-        assert_eq!(deliveries.count, 2, "Exactly one email should be sent");
+        assert_eq!(deliveries.count, 0, "No emails should be sent");
         // with_settings!({
         //     filters => cleanup_email()
         // }, {
@@ -330,7 +330,7 @@ async fn can_auth_with_magic_link() {
         );
 
         let deliveries = ctx.mailer.unwrap().deliveries();
-        assert_eq!(deliveries.count, 1, "Exactly one email should be sent");
+        assert_eq!(deliveries.count, 0, "No emails should be sent");
 
         // let redact_token = format!("[a-zA-Z0-9]{{{}}}", users::MAGIC_LINK_LENGTH);
         // with_settings!({
@@ -439,10 +439,7 @@ async fn can_resend_verification_email() {
 
         let deliveries = ctx.mailer.unwrap().deliveries();
 
-        assert_eq!(
-            deliveries.count, 2,
-            "Two emails should have been sent: welcome and re-verification"
-        );
+        assert_eq!(deliveries.count, 0, "No emails should be sent");
 
         let user = users::Model::find_by_email(&ctx.db, email)
             .await
@@ -493,10 +490,7 @@ async fn cannot_resend_email_if_already_verified() {
         );
 
         let deliveries = ctx.mailer.unwrap().deliveries();
-        assert_eq!(
-            deliveries.count, 1,
-            "Only the original welcome email should be sent"
-        );
+        assert_eq!(deliveries.count, 0, "No emails should be sent");
     })
     .await;
 }

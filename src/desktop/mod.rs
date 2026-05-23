@@ -4,17 +4,8 @@
 //! Supports Linux (GTK) and Windows (Win32).
 
 mod notifications;
-
-use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem},
-    Icon, TrayIcon, TrayIconBuilder,
-};
-
-/// Menu item identifier for the "Open Dashboard" action.
-const MENU_OPEN: &str = "open";
-/// Menu item identifier for the "Quit" action.
-const MENU_QUIT: &str = "quit";
-
+mod tray;
+use tray_icon::TrayIconBuilder;
 /// Configuration for the desktop integration layer.
 #[derive(Debug, Clone)]
 pub struct DesktopConfig {
@@ -124,17 +115,18 @@ impl DesktopManager {
                 }
             }
 
-            let icon = create_icon();
-            let menu = build_menu();
+            let tray_state = tray::Tray::new(server_url);
+            let icon = tray::Tray::icon();
+            let menu = tray::Tray::menu();
 
-            let tray = match TrayIconBuilder::new()
+            let system_tray = match TrayIconBuilder::new()
                 .with_id("game-smith")
                 .with_tooltip(&tooltip)
                 .with_menu(Box::new(menu))
                 .with_icon(icon)
                 .build()
             {
-                Ok(t) => t,
+                Ok(system_tray) => system_tray,
                 Err(e) => {
                     eprintln!("game-smith: failed to create tray icon: {e}");
                     let _ = tx.send(Some(format!("tray build failed: {e}")));
@@ -144,7 +136,7 @@ impl DesktopManager {
 
             let _ = tx.send(None);
 
-            run_tray_event_loop(tray, server_url);
+            tray_state.run_event_loop(system_tray);
         });
 
         match rx.recv() {
@@ -181,110 +173,5 @@ impl DesktopManager {
     /// Shows a desktop notification.
     pub fn notify(&self, title: &str, message: &str) {
         notifications::notify(title, message);
-    }
-}
-
-/// Handles a tray context menu event.
-fn handle_menu_event(event: &MenuEvent, server_url: &str) {
-    use std::process;
-
-    match event.id.as_ref() {
-        MENU_OPEN => {
-            let _ = open::that(server_url);
-        }
-        MENU_QUIT => {
-            process::exit(0);
-        }
-        _ => {}
-    }
-}
-
-/// Builds the tray context menu with "Open Dashboard" and "Quit" items.
-fn build_menu() -> Menu {
-    let open_item = MenuItem::with_id(MENU_OPEN, "Open Dashboard", true, None);
-    let quit_item = MenuItem::with_id(MENU_QUIT, "Quit", true, None);
-
-    let menu = Menu::new();
-    let _ = menu.append_items(&[&open_item, &quit_item]);
-
-    menu
-}
-
-/// Creates a procedural 32x32 tray icon (simple white circle on dark background).
-fn create_icon() -> Icon {
-    let size = 32u32;
-    let mut pixels = vec![0u8; (size * size * 4) as usize];
-
-    let center = size / 2;
-    let radius = size / 2 - 2;
-    let radius_sq = radius * radius;
-
-    for y in 0..size {
-        for x in 0..size {
-            let dx = x.abs_diff(center);
-            let dy = y.abs_diff(center);
-            let dist_sq = dx * dx + dy * dy;
-            let in_circle = dist_sq <= radius_sq;
-
-            let idx = (y * size + x) as usize * 4;
-            if in_circle {
-                pixels[idx] = 220; // R
-                pixels[idx + 1] = 225; // G
-                pixels[idx + 2] = 255; // B
-            } else {
-                pixels[idx] = 30; // R
-                pixels[idx + 1] = 30; // G
-                pixels[idx + 2] = 40; // B
-            }
-            pixels[idx + 3] = 255; // A
-        }
-    }
-
-    Icon::from_rgba(pixels, size, size).expect("failed to create procedural icon")
-}
-
-/// Runs the OS-specific event loop required to keep the tray icon responsive.
-///
-/// On Linux this drives the GTK main loop; on Windows this runs a Win32
-/// message pump. Menu events are drained from the channel and dispatched
-/// to [`handle_menu_event`].
-///
-/// This function diverges and never returns.
-#[cfg(target_os = "linux")]
-fn run_tray_event_loop(tray: TrayIcon, server_url: String) -> ! {
-    let rx_menu = MenuEvent::receiver().clone();
-    glib::idle_add(move || {
-        while let Ok(event) = rx_menu.try_recv() {
-            handle_menu_event(&event, &server_url);
-        }
-        glib::ControlFlow::Continue
-    });
-    let _keep_alive = tray;
-    gtk::main();
-    unreachable!("gtk::main() should not return")
-}
-
-#[cfg(target_os = "windows")]
-fn run_tray_event_loop(tray: TrayIcon, server_url: String) -> ! {
-    use windows::Win32::Foundation::{HWND, MSG};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE,
-    };
-
-    let rx_menu = MenuEvent::receiver().clone();
-    let _keep_alive = tray;
-    let mut msg = unsafe { std::mem::zeroed::<MSG>() };
-    loop {
-        // Drain pending menu events.
-        while let Ok(event) = rx_menu.try_recv() {
-            handle_menu_event(&event, &server_url);
-        }
-        // Non-blocking message pump with brief sleep to avoid busy-wait.
-        if unsafe { PeekMessageW(&mut msg, HWND::default(), 0, 0, PM_REMOVE).as_bool() } {
-            unsafe { TranslateMessage(&msg) };
-            unsafe { DispatchMessageW(&msg) };
-        } else {
-            std::thread::sleep(std::time::Duration::from_millis(16));
-        }
     }
 }

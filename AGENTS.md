@@ -141,6 +141,8 @@ Skip the todo list only for trivial requests: single-line fixes, reading files, 
 - Response DTOs implement `serde::Serialize` and are returned via `format::json()`.
 - Use `&str` over `&String` in function signatures (clippy `ptr_arg`).
 
+- Naming conventions: use descriptive variable names (e.g., `tray_state`, not `t`; `tray_icon`, not `tr`). There is no cost in describing things clearly.
+
 ### Local Environment
 - Linux requires GTK/appindicator system dependencies (`libgtk-3`, `libappindicator-gtk3`).
 - No libxdo symlink needed — `tray-icon` is compiled with `libxdo` feature disabled.
