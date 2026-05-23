@@ -14,7 +14,7 @@ use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter};
 
 #[allow(unused_imports)]
 use crate::{
-    initializers, tasks,
+    controllers, initializers, tasks,
     workers::{
         command_exec::CommandExecWorker, downloader::DownloadWorker, log_cleanup::LogCleanupWorker,
     },
@@ -75,7 +75,7 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes()
+        AppRoutes::with_default_routes().add_route(controllers::commands::routes())
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;

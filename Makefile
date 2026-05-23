@@ -1,6 +1,6 @@
 .PHONY: help setup setup-check dev watch \
 	test fmt fmt-check style lint qa \
-	migrate-gen migrate-up build release package package-rpm install run-release clean reset
+	migrate-gen migrate-up build build-css release package package-rpm install run-release clean reset
 
 help:
 	@echo "Usage: make <target>"
@@ -27,6 +27,7 @@ help:
 	@echo ""
 	@echo "Build"
 	@echo "  build         Build (debug)"
+	@echo "  build-css     Compile Tailwind CSS from source to static assets"
 	@echo "  release       Production build"
 	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
 	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
@@ -88,6 +89,21 @@ migrate-up:
 
 build:
 	cargo build
+
+TAILWIND_CLI := node_modules/.bin/tailwindcss
+TWINDEIND_VERSION := v4.1.14
+
+# Download Tailwind CLI binary if missing
+$(TAILWIND_CLI):
+	mkdir -p node_modules/.bin
+	curl -fsSL -o $(TAILWIND_CLI) \
+	  https://github.com/tailwindlabs/tailwindcss/releases/download/$(TWINDEIND_VERSION)/tailwindcss-linux-x64
+	chmod +x $(TAILWIND_CLI)
+
+# Compile Tailwind CSS from source to static assets
+build-css: $(TAILWIND_CLI)
+	$(TAILWIND_CLI) -i assets/css/tailwind.css -o assets/static/css/tailwind.css \
+	  --config tailwind.config.js --minify
 
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 

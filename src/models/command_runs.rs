@@ -3,7 +3,7 @@ pub use super::_entities::command_runs::{ActiveModel, Entity, Model};
 use loco_rs::app::AppContext;
 use loco_rs::model::ModelError;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, ActiveValue};
+use sea_orm::{ActiveModelTrait, ActiveValue, QueryOrder, QuerySelect};
 use std::collections::HashMap;
 pub type CommandRuns = Entity;
 
@@ -175,6 +175,19 @@ impl Model {
             .filter(Column::Status.ne("running"))
             .filter(Column::LogPath.is_not_null())
             .filter(Column::LogRemoved.eq(false))
+            .all(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
+    /// List the most recent command runs, ordered by creation time descending.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn list_recent(ctx: &AppContext, limit: u64) -> Result<Vec<Self>, ModelError> {
+        Entity::find()
+            .order_by_desc(Column::CreatedAt)
+            .limit(limit)
             .all(&ctx.db)
             .await
             .map_err(ModelError::from)
