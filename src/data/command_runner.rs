@@ -20,6 +20,7 @@ pub struct CommandRun {
     pub log_path: Option<String>,
     pub status: String,
     pub exit_code: Option<i32>,
+    pub title: Option<String>,
 }
 
 impl CommandRun {
@@ -42,6 +43,7 @@ impl CommandRun {
             log_path: model.log_path.clone(),
             status: model.status.clone(),
             exit_code: model.exit_code,
+            title: model.title.clone(),
         }
     }
 }
@@ -85,6 +87,7 @@ impl CommandRunner {
         args: Vec<String>,
         working_dir: Option<String>,
         env: Option<HashMap<String, String>>,
+        title: Option<String>,
     ) -> Result<CommandRun, ModelError> {
         // Create log file path: logs_dir/YYYY-MM-DD/{uuid}.log
         let date_dir = Local::now().format("%Y-%m-%d").to_string();
@@ -102,9 +105,16 @@ impl CommandRunner {
         })?;
 
         // Insert database record
-        let model =
-            ActiveModel::create_run(&self.ctx, command, args, working_dir, env, log_path_str)
-                .await?;
+        let model = ActiveModel::create_run(
+            &self.ctx,
+            command,
+            args,
+            working_dir,
+            env,
+            log_path_str,
+            title,
+        )
+        .await?;
 
         // Dispatch worker
         let worker_args = CommandExecWorkerArgs { run_id: model.id };

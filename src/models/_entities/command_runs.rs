@@ -14,6 +14,7 @@ pub struct Model {
     pub args: Json,
     pub working_dir: Option<String>,
     pub log_path: Option<String>,
+    pub title: Option<String>,
     pub env: Option<Json>,
     pub status: String,
     pub exit_code: Option<i32>,

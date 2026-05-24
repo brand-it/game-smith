@@ -55,6 +55,7 @@ async fn commands_list_renders_with_data() {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("Failed to create run");
@@ -93,6 +94,7 @@ async fn commands_list_shows_failed_for_nonzero_exit() {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("Failed to create run");
@@ -125,6 +127,7 @@ async fn commands_list_shows_placeholder_for_missing_exit() {
             &ctx,
             "sleep_long".to_string(),
             vec!["100".to_string()],
+            None,
             None,
             None,
             None,

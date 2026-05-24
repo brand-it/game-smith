@@ -62,6 +62,7 @@ async fn test_truncate_oversized_logs() {
         None,
         None,
         Some(log_path_str.clone()),
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -117,6 +118,7 @@ async fn test_vacuum_missing_logs() {
         None,
         None,
         Some(log_path_str.clone()),
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -192,6 +194,7 @@ async fn test_remove_stale_logs() {
         None,
         None,
         Some(log_path_str.clone()),
+        None,
     )
     .await
     .expect("Failed to create run");

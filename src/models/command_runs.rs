@@ -37,6 +37,7 @@ impl ActiveModel {
         working_dir: Option<String>,
         env: Option<HashMap<String, String>>,
         log_path: Option<String>,
+        title: Option<String>,
     ) -> Result<Model, ModelError> {
         let now = chrono::Utc::now();
         let args_json = serde_json::to_value(&args).map_err(|e| {
@@ -64,6 +65,7 @@ impl ActiveModel {
             server_id: ActiveValue::NotSet,
             log_removed: ActiveValue::Set(false),
             pid: ActiveValue::NotSet,
+            title: ActiveValue::Set(title),
         };
         record.insert(&ctx.db).await.map_err(ModelError::from)
     }

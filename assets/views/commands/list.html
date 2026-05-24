@@ -13,6 +13,7 @@
             <tr>
                 <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-id", lang="en-US") }}</th>
                 <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-command", lang="en-US") }}</th>
+                <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-title", lang="en-US") }}</th>
                 <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-status", lang="en-US") }}</th>
                 <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-exit", lang="en-US") }}</th>
                 <th class="px-4 py-3 font-medium uppercase tracking-wide text-xs">{{ t(key="commands-table-started", lang="en-US") }}</th>
@@ -25,6 +26,7 @@
                     <a href="/commands/{{ run.id }}" class="font-mono text-blue-600 hover:underline">{{ run.id }}</a>
                 </td>
                 <td class="px-4 py-3 font-medium text-gray-900">{{ run.command }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ run.title|default(value=run.command) }}</td>
                 <td class="px-4 py-3">
                     {{ macros::status_badge(status=run.status) }}
                 </td>

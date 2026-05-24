@@ -16,6 +16,11 @@
 <!-- Metadata -->
 <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-title-field", lang="en-US") }}</dt>
+        <dd class="mt-1 text-sm text-gray-900">{{ run.title|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+    </div>
+
+    <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-command", lang="en-US") }}</dt>
         <dd class="mt-1 truncate font-mono text-sm text-gray-900">{{ run.command }}</dd>
     </div>

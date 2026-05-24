@@ -26,6 +26,7 @@ async fn test_create_run() {
         None,
         None,
         Some("/tmp/test.log".to_string()),
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -56,6 +57,7 @@ async fn test_finish_run() {
         &boot.app_context,
         "sleep".to_string(),
         vec!["10".to_string()],
+        None,
         None,
         None,
         None,
@@ -101,6 +103,7 @@ async fn test_update_pid() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -139,6 +142,7 @@ async fn test_find_running() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -147,6 +151,7 @@ async fn test_find_running() {
         &boot.app_context,
         "echo".to_string(),
         vec!["done".to_string()],
+        None,
         None,
         None,
         None,
@@ -185,6 +190,7 @@ async fn test_mark_log_removed() {
         None,
         None,
         Some("/tmp/test.log".to_string()),
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -215,6 +221,7 @@ async fn test_find_stale() {
         None,
         None,
         Some("/tmp/old.log".to_string()),
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -278,6 +285,7 @@ async fn test_is_running_helper() {
         &boot.app_context,
         "sleep".to_string(),
         vec!["100".to_string()],
+        None,
         None,
         None,
         None,

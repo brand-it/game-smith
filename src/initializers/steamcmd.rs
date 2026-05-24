@@ -55,6 +55,7 @@ impl Initializer for SteamCmdInstaller {
                 Some(steamcmd.steamcmd_dir().to_string_lossy().to_string()),
                 None,
                 log_path_str,
+                Some("SteamCMD Health Check".to_string()),
             )
             .await;
 
