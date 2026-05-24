@@ -72,12 +72,14 @@ impl Hooks for App {
         Ok(vec![
             Box::new(initializers::view_engine::ViewEngineInitializer),
             Box::new(initializers::command_log_socket::CommandLogInitializer),
+            Box::new(initializers::steamcmd::SteamCmdInstaller),
         ])
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes()
             .add_route(controllers::commands::routes())
+            .add_route(controllers::steamcmd::routes())
             .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

@@ -1,0 +1,548 @@
+use std::fmt::{self, Display};
+use std::io;
+use std::path::{Path, PathBuf};
+
+use flate2::read::GzDecoder;
+use tokio::process::Command;
+use tracing::{debug, error, info, warn};
+
+use crate::AppDirs;
+
+/// Download URLs for `SteamCMD` platform archives.
+const STEAMCMD_LINUX_URL: &str =
+    "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz";
+#[cfg(target_os = "windows")]
+const STEAMCMD_WINDOWS_URL: &str = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
+
+/// Name of the steamcmd data directory inside the application data directory.
+const STEAMCMD_DIR_NAME: &str = "steamcmd";
+
+/// The HLDS app ID has special handling — `app_update` must be run multiple
+/// times to download all engine files.
+const HLDS_APP_ID: u32 = 90;
+const HLDS_UPDATE_RETRIES: u32 = 5;
+
+/// Errors that can occur during `SteamCMD` operations.
+#[derive(Debug)]
+pub enum SteamCmdError {
+    /// Failed to download the `SteamCMD` archive.
+    Download(Box<dyn std::error::Error + Send + Sync>),
+    /// Failed to extract the `SteamCMD` archive.
+    Extract(io::Error),
+    /// Failed to create a directory during installation.
+    CreateDir(io::Error),
+    /// Failed to spawn the `SteamCMD` process.
+    Spawn(io::Error),
+    /// `SteamCMD` process exited with a non-zero status.
+    ExitStatus(i32),
+    /// Required 32-bit shared libraries are missing on Linux.
+    MissingDependencies(String),
+    /// A generic I/O error occurred.
+    Io(io::Error),
+}
+
+impl Display for SteamCmdError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Download(src) => write!(f, "failed to download SteamCMD: {src}"),
+            Self::Extract(err) => write!(f, "failed to extract SteamCMD archive: {err}"),
+            Self::CreateDir(err) => write!(f, "failed to create directory: {err}"),
+            Self::Spawn(err) => write!(f, "failed to spawn SteamCMD: {err}"),
+            Self::ExitStatus(code) => write!(f, "SteamCMD exited with status {code}"),
+            Self::MissingDependencies(hint) => {
+                write!(f, "missing 32-bit dependencies: {hint}")
+            }
+            Self::Io(err) => write!(f, "I/O error: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for SteamCmdError {}
+
+impl From<io::Error> for SteamCmdError {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+/// Manages `SteamCMD` installation and execution.
+///
+/// Handles platform-aware download, extraction, and invocation of Valve's
+/// `SteamCMD` tool. `SteamCMD` self-updates on every invocation, so no version
+/// tracking is required.
+pub struct SteamCmd {
+    /// Base directory for steamcmd files.
+    steamcmd_dir: PathBuf,
+    /// Path to the steamcmd binary.
+    binary_path: PathBuf,
+}
+
+impl SteamCmd {
+    /// Create a new [`SteamCmd`] instance with paths resolved from the
+    /// application's data directories.
+    ///
+    /// The steamcmd directory is created at `$DATA_HOME/game-smith/steamcmd/`.
+    #[must_use]
+    pub fn new(dirs: &AppDirs) -> Self {
+        let steamcmd_dir = dirs.app_dir.join(STEAMCMD_DIR_NAME);
+
+        #[cfg(target_os = "windows")]
+        let binary_path = steamcmd_dir.join("steamcmd.exe");
+        #[cfg(not(target_os = "windows"))]
+        let binary_path = steamcmd_dir.join("steamcmd.sh");
+
+        Self {
+            steamcmd_dir,
+            binary_path,
+        }
+    }
+
+    /// Returns the path to the steamcmd directory.
+    #[must_use]
+    pub fn steamcmd_dir(&self) -> &Path {
+        &self.steamcmd_dir
+    }
+
+    /// Returns the path to the steamcmd binary.
+    #[must_use]
+    pub fn binary_path(&self) -> &Path {
+        &self.binary_path
+    }
+
+    /// Checks if the steamcmd binary exists on disk.
+    #[must_use]
+    pub fn is_installed(&self) -> bool {
+        self.binary_path.exists()
+    }
+
+    /// Checks if steamcmd is installed and verifies that required 32-bit
+    /// shared libraries are available on Linux.
+    ///
+    /// On non-Linux platforms, this is equivalent to [`is_installed`][Self::is_installed].
+    ///
+    /// Returns `Ok(())` if all dependencies are satisfied, or
+    /// [`SteamCmdError::MissingDependencies`] with distro-specific install
+    /// instructions.
+    ///
+    /// # Errors
+    /// Returns [`SteamCmdError::Io`] if the steamcmd binary is not found, or
+    /// [`SteamCmdError::MissingDependencies`] if 32-bit libraries are missing.
+    pub fn is_installed_with_deps(&self) -> Result<(), SteamCmdError> {
+        if !self.is_installed() {
+            return Err(SteamCmdError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                "steamcmd binary not found",
+            )));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            if !Self::check_linux_32bit_deps() {
+                let distro_hint = Self::linux_deps_hint();
+                return Err(SteamCmdError::MissingDependencies(distro_hint));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Ensures `SteamCMD` is installed on the system.
+    ///
+    /// This method is idempotent:
+    /// - If the binary already exists, it returns immediately.
+    /// - If the binary is missing, it downloads and extracts the platform
+    ///   archive.
+    ///
+    /// `SteamCMD` self-updates on every invocation, so a pre-existing binary
+    /// does not need to be re-downloaded.
+    ///
+    /// # Errors
+    /// Returns a [`SteamCmdError`] if the directory cannot be created, the
+    /// download fails, or extraction fails.
+    pub async fn ensure_installed(&self) -> Result<(), SteamCmdError> {
+        if self.is_installed() {
+            debug!(path = %self.binary_path.display(), "SteamCMD binary already installed");
+            return Ok(());
+        }
+
+        info!(path = %self.binary_path.display(), "SteamCMD binary not found, installing...");
+        self.install().await
+    }
+
+    /// Downloads and extracts the `SteamCMD` archive for the current platform.
+    ///
+    /// # Errors
+    /// Returns a [`SteamCmdError`] if the download or extraction fails.
+    pub async fn install(&self) -> Result<(), SteamCmdError> {
+        std::fs::create_dir_all(&self.steamcmd_dir).map_err(SteamCmdError::CreateDir)?;
+
+        #[cfg(target_os = "windows")]
+        {
+            self.download_and_extract_zip(STEAMCMD_WINDOWS_URL).await
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.download_and_extract_tar(STEAMCMD_LINUX_URL).await
+        }
+    }
+
+    /// Downloads a file from a URL and writes it to a temporary path.
+    async fn download_to_temp(&self, url: &str) -> Result<PathBuf, SteamCmdError> {
+        let temp_dir = self.steamcmd_dir.join("temp");
+        std::fs::create_dir_all(&temp_dir).map_err(SteamCmdError::CreateDir)?;
+
+        let temp_path = if cfg!(target_os = "windows") {
+            temp_dir.join("steamcmd.zip")
+        } else {
+            temp_dir.join("steamcmd.tar.gz")
+        };
+
+        info!(url = url, "Downloading SteamCMD archive...");
+        let response = reqwest::get(url)
+            .await
+            .map_err(|e| SteamCmdError::Download(Box::new(e)))?;
+
+        if !response.status().is_success() {
+            return Err(SteamCmdError::Download(Box::new(io::Error::other(
+                format!("HTTP {} from {url}", response.status()),
+            ))));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| SteamCmdError::Download(Box::new(e)))?;
+        tokio::fs::write(&temp_path, bytes.as_ref())
+            .await
+            .map_err(SteamCmdError::Io)?;
+
+        debug!(path = %temp_path.display(), "Download complete");
+        Ok(temp_path)
+    }
+
+    /// Downloads and extracts a tar.gz archive.
+    #[cfg(not(target_os = "windows"))]
+    async fn download_and_extract_tar(&self, url: &str) -> Result<(), SteamCmdError> {
+        let temp_path = self.download_to_temp(url).await?;
+
+        info!(path = %temp_path.display(), "Extracting SteamCMD tar archive...");
+        let bytes = tokio::fs::read(&temp_path)
+            .await
+            .map_err(SteamCmdError::Io)?;
+
+        let decoder = GzDecoder::new(bytes.as_slice());
+        let mut archive = tar::Archive::new(decoder);
+        archive
+            .unpack(&self.steamcmd_dir)
+            .map_err(SteamCmdError::Extract)?;
+
+        // Clean up temp file
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        let _ = tokio::fs::remove_dir(&self.steamcmd_dir.join("temp")).await;
+
+        if self.is_installed() {
+            info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
+            Ok(())
+        } else {
+            error!("SteamCMD installation failed: binary not found after extraction");
+            Err(SteamCmdError::Extract(io::Error::new(
+                io::ErrorKind::NotFound,
+                "binary not found after extraction",
+            )))
+        }
+    }
+
+    /// Downloads and extracts a zip archive.
+    #[cfg(target_os = "windows")]
+    async fn download_and_extract_zip(&self, url: &str) -> Result<(), SteamCmdError> {
+        let temp_path = self.download_to_temp(url).await?;
+
+        info!(path = %temp_path.display(), "Extracting SteamCMD zip archive...");
+        let bytes = tokio::fs::read(&temp_path)
+            .await
+            .map_err(SteamCmdError::Io)?;
+        let mut archive =
+            zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(SteamCmdError::Extract)?;
+
+        archive
+            .extract(&self.steamcmd_dir)
+            .map_err(SteamCmdError::Extract)?;
+
+        // Clean up temp file
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        let _ = tokio::fs::remove_dir(&self.steamcmd_dir.join("temp")).await;
+
+        if self.is_installed() {
+            info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
+            Ok(())
+        } else {
+            error!("SteamCMD installation failed: binary not found after extraction");
+            Err(SteamCmdError::Extract(io::Error::new(
+                io::ErrorKind::NotFound,
+                "binary not found after extraction",
+            )))
+        }
+    }
+
+    /// Runs steamcmd with the given arguments and waits for it to complete.
+    ///
+    /// The process inherits stdin/stdout/stderr. Use this for interactive or
+    /// verbose operations.
+    ///
+    /// # Arguments
+    /// * `args` - Command-line arguments to pass to steamcmd (does not include
+    ///   the `+quit` command; callers should include it if needed).
+    ///
+    /// # Errors
+    /// Returns [`SteamCmdError::Spawn`] if the process cannot be started, or
+    /// [`SteamCmdError::ExitStatus`] if steamcmd exits with a non-zero code.
+    pub async fn run_command(&self, args: &[&str]) -> Result<(), SteamCmdError> {
+        if !self.is_installed() {
+            return Err(SteamCmdError::Spawn(io::Error::new(
+                io::ErrorKind::NotFound,
+                "steamcmd is not installed",
+            )));
+        }
+
+        info!(
+            binary = %self.binary_path.display(),
+            args = ?args,
+            "Running SteamCMD"
+        );
+
+        let output = Command::new(&self.binary_path)
+            .args(args)
+            .output()
+            .await
+            .map_err(SteamCmdError::Spawn)?;
+
+        if output.status.success() {
+            debug!("SteamCMD command completed successfully");
+            Ok(())
+        } else {
+            let code = output.status.code().unwrap_or(-1);
+            warn!(
+                exit_code = code,
+                stderr = %String::from_utf8_lossy(&output.stderr),
+                "SteamCMD command failed"
+            );
+            Err(SteamCmdError::ExitStatus(code))
+        }
+    }
+
+    /// Runs steamcmd with the given arguments and captures stdout.
+    ///
+    /// # Arguments
+    /// * `args` - Command-line arguments to pass to steamcmd.
+    ///
+    /// # Returns
+    /// The stdout output as a string.
+    ///
+    /// # Errors
+    /// Returns [`SteamCmdError::Spawn`] if the process cannot be started, or
+    /// [`SteamCmdError::ExitStatus`] if steamcmd exits with a non-zero code.
+    pub async fn run_command_capture(&self, args: &[&str]) -> Result<String, SteamCmdError> {
+        if !self.is_installed() {
+            return Err(SteamCmdError::Spawn(io::Error::new(
+                io::ErrorKind::NotFound,
+                "steamcmd is not installed",
+            )));
+        }
+
+        let output = Command::new(&self.binary_path)
+            .args(args)
+            .output()
+            .await
+            .map_err(SteamCmdError::Spawn)?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            let code = output.status.code().unwrap_or(-1);
+            Err(SteamCmdError::ExitStatus(code))
+        }
+    }
+
+    /// Installs or updates a game server application using `SteamCMD`.
+    ///
+    /// This is a high-level convenience method that runs the `app_update`
+    /// command with the `validate` flag.
+    ///
+    /// # Arguments
+    /// * `app_id` - The Steam App ID of the game server.
+    /// * `install_dir` - The directory where the game server will be installed.
+    ///
+    /// # Edge cases
+    /// For HLDS (`app_id` 90), the `app_update` command is run multiple times
+    /// as required by the Half-Life Dedicated Server installation process.
+    ///
+    /// # Errors
+    /// Returns a [`SteamCmdError`] if the command fails.
+    pub async fn update_app(&self, app_id: u32, install_dir: &Path) -> Result<(), SteamCmdError> {
+        let install_dir_str = install_dir.to_string_lossy().to_string();
+        let retries = if app_id == HLDS_APP_ID {
+            HLDS_UPDATE_RETRIES
+        } else {
+            1
+        };
+
+        info!(
+            app_id = app_id,
+            install_dir = %install_dir.display(),
+            retries = retries,
+            "Updating game server application"
+        );
+
+        let app_id_str = app_id.to_string();
+        for attempt in 1..=retries {
+            if app_id == HLDS_APP_ID && retries > 1 {
+                info!(
+                    app_id = app_id,
+                    attempt = attempt,
+                    total = retries,
+                    "Running SteamCMD app_update"
+                );
+            }
+
+            let args: Vec<&str> = vec![
+                "+force_install_dir",
+                &install_dir_str,
+                "+app_update",
+                &app_id_str,
+                "+validate",
+                "+quit",
+            ];
+
+            self.run_command(&args).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Checks if the required 32-bit shared libraries are available on Linux.
+    #[cfg(target_os = "linux")]
+    fn check_linux_32bit_deps() -> bool {
+        // Check for the presence of 32-bit i386 libraries
+        let lib_dirs = ["/lib/i386-linux-gnu", "/usr/lib/i386-linux-gnu"];
+
+        let has_lib_dir = lib_dirs.iter().any(|dir| Path::new(dir).exists());
+
+        // Also try checking via ldconfig if available
+        let ldconfig_check = std::process::Command::new("ldconfig")
+            .arg("-p")
+            .output()
+            .is_ok_and(|output| {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                stdout.contains("i386")
+            });
+
+        has_lib_dir || ldconfig_check
+    }
+
+    /// Returns distro-specific instructions for installing 32-bit dependencies.
+    #[cfg(target_os = "linux")]
+    fn linux_deps_hint() -> String {
+        // Detect common distributions and provide specific instructions
+        let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+
+        if os_release.contains("ubuntu") || os_release.contains("debian") {
+            "Install 32-bit libraries: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install lib32gcc-s1 lib32stdc++6"
+        } else if os_release.contains("fedora") || os_release.contains("rhel") || os_release.contains("centos") {
+            "Install 32-bit libraries: sudo dnf install glibc.i686 libstdc++.i686"
+        } else if os_release.contains("arch") {
+            "Install 32-bit libraries: sudo pacman -S lib32-glibc lib32-libstdcxx"
+        } else if os_release.contains("opensuse") || os_release.contains("suse") {
+            "Install 32-bit libraries: sudo zypper install glibc-32bit libstdc++6-32bit"
+        } else {
+            "Install 32-bit glibc and libstdc++ for your distribution"
+        }
+        .to_string()
+    }
+
+    /// Builds the command-line arguments for an `app_update` call without
+    /// executing it. Useful for testing and preview.
+    #[must_use]
+    pub fn build_update_app_args(app_id: u32, install_dir: &Path) -> Vec<String> {
+        vec![
+            "+force_install_dir".to_string(),
+            install_dir.to_string_lossy().to_string(),
+            "+app_update".to_string(),
+            app_id.to_string(),
+            "+validate".to_string(),
+            "+quit".to_string(),
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_steamcmd_paths() {
+        let data_home = std::env::temp_dir();
+        let dirs = AppDirs::new(data_home.to_string_lossy().to_string());
+        let steamcmd = SteamCmd::new(&dirs);
+
+        assert!(
+            steamcmd.steamcmd_dir().ends_with("steamcmd"),
+            "steamcmd_dir should end with 'steamcmd'"
+        );
+
+        #[cfg(target_os = "windows")]
+        assert!(
+            steamcmd.binary_path().ends_with("steamcmd.exe"),
+            "Windows binary should be steamcmd.exe"
+        );
+        #[cfg(not(target_os = "windows"))]
+        assert!(
+            steamcmd.binary_path().ends_with("steamcmd.sh"),
+            "Linux binary should be steamcmd.sh"
+        );
+    }
+
+    #[test]
+    fn test_is_installed_false() {
+        let data_home = std::env::temp_dir();
+        let dirs = AppDirs::new(data_home.to_string_lossy().to_string());
+        let steamcmd = SteamCmd::new(&dirs);
+
+        // The temp_dir shouldn't have steamcmd installed
+        assert!(
+            !steamcmd.is_installed(),
+            "is_installed should return false for non-existent binary"
+        );
+    }
+
+    #[test]
+    fn test_build_update_app_args() {
+        let install_dir = PathBuf::from("/opt/games/counter-strike");
+        let args = SteamCmd::build_update_app_args(740, &install_dir);
+
+        assert_eq!(args.len(), 6);
+        assert_eq!(args[0], "+force_install_dir");
+        assert_eq!(args[1], "/opt/games/counter-strike");
+        assert_eq!(args[2], "+app_update");
+        assert_eq!(args[3], "740");
+        assert_eq!(args[4], "+validate");
+        assert_eq!(args[5], "+quit");
+    }
+
+    #[test]
+    fn test_build_update_app_args_hlds() {
+        let install_dir = PathBuf::from("/opt/games/hlds");
+        let args = SteamCmd::build_update_app_args(HLDS_APP_ID, &install_dir);
+
+        assert_eq!(args[3], "90");
+    }
+
+    #[test]
+    fn test_missing_deps_error_display() {
+        let err = SteamCmdError::MissingDependencies(
+            "Install 32-bit libraries: sudo apt-get install lib32gcc-s1".to_string(),
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("32-bit"));
+        assert!(msg.contains("Install"));
+    }
+}

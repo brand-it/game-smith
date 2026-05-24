@@ -93,6 +93,52 @@ All of the above are available as `make` targets. Run `make help` for the full l
   reset         Full reset (remove DB + build artifacts)
 ```
 
+## Code Generation
+
+You **MUST** use `cargo loco generate` instead of creating files by hand. The generators produce boilerplate that follows loco conventions and wire up the module tree correctly.
+
+```bash
+# Model + migration + test file (creates src/models/<name>.rs, migration, tests/)
+cargo loco generate model <name> [field:type]...
+
+# Migration only (creates migration/ file with Up/Down)
+cargo loco generate migration <name> [field:type]...
+
+# CRUD scaffold (model + controller + views + test)
+cargo loco generate scaffold <name> [field:type]... --kind <api|html|htmx>
+
+# Controller + test file (creates src/controllers/<name>.rs, tests/requests/<name>.rs)
+cargo loco generate controller <name> [actions]... --kind <api|html|htmx>
+
+# CLI task (creates src/tasks/<name>.rs)
+cargo loco generate task <name>
+
+# Background worker (creates src/workers/<name>.rs)
+cargo loco generate worker <name>
+
+# Mailer with email templates (creates src/mailers/<name>.rs + i18n stubs)
+cargo loco generate mailer <name>
+
+# Data loader module (creates src/data/<name>.rs)
+cargo loco generate data <name>
+
+# Scheduler configuration template (creates src/scheduler.rs)
+cargo loco generate scheduler
+
+# Deployment infrastructure (creates docker/shuttle/nginx setup)
+cargo loco generate deployment <kind>
+
+# Override loco templates (copy templates for customization)
+cargo loco generate override <path>
+```
+
+### Generator conventions
+- Controllers generated with `--kind html` produce HTML-rendering actions. Use `--kind api` for JSON responses.
+- Models generate both the entity (via migration) and test file. Run `cargo loco db migrate` and `cargo loco db entities` after generating a model.
+- Scaffold generates model, controller, views, and routes in one shot.
+- Workers register in `src/workers/mod.rs`; review and wire into `App::connect_workers()`.
+- Always review generated code before committing — remove unused imports and adjust to match project conventions.
+
 ## Task Tracking
 
 You **MUST** create a todo list using `todo_write` at the start of every task that involves code changes. The list **MUST** include verification steps before you mark the task complete.
