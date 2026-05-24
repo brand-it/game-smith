@@ -1966,6 +1966,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
+ "tera",
  "tokio",
  "tower 0.5.3",
  "tower-http",

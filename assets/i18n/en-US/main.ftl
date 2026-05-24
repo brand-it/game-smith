@@ -37,3 +37,6 @@ status-running = Running
 status-finished = Finished
 status-failed = Failed
 status-stopped = Stopped
+exit-success = Success
+exit-failed = Failed
+exit-none = —

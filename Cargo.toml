@@ -27,6 +27,7 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 log = { version = "0.4" }
 regex = { version = "1.11" }
+tera = { version = "1.20" }
 migration = { path = "migration" }
 sea-orm = { version = "1.1", features = [
   "sqlx-sqlite",

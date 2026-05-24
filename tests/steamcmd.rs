@@ -65,11 +65,11 @@ fn test_missing_deps_error_message() {
     use game_smith::data::steamcmd::SteamCmdError;
 
     let err = SteamCmdError::MissingDependencies(
-        "Install 32-bit libraries: sudo apt-get install lib32gcc-s1".to_string(),
+        "error while loading shared libraries: libstdc++.so.6".to_string(),
     );
     let msg = err.to_string();
-    assert!(msg.contains("32-bit"));
-    assert!(msg.contains("Install"));
+    assert!(msg.contains("failed to start"));
+    assert!(msg.contains("libstdc++"));
 }
 
 #[test]

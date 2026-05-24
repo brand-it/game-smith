@@ -31,3 +31,6 @@ status-running = Läuft
 status-finished = Fertig
 status-failed = Fehlgeschlagen
 status-stopped = Gestoppt
+exit-success = Erfolg
+exit-failed = Fehlgeschlagen
+exit-none = —

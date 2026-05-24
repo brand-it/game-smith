@@ -32,6 +32,10 @@ impl Initializer for ViewEngineInitializer {
 
             engines::TeraView::build()?.post_process(move |tera| {
                 tera.register_function("t", FluentLoader::new(arc.clone()));
+                tera.register_function(
+                    "steamcmd_health",
+                    crate::data::steamcmd::tera_steamcmd_health,
+                );
                 Ok(())
             })?
         } else {

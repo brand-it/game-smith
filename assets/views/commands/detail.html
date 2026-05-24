@@ -28,8 +28,17 @@
     </div>
 
     <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
-        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-exit-code", lang="en-US") }}</dt>
-        <dd class="mt-1 font-mono text-sm text-gray-900" id="exit-code">{{ run.exit_code|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
+        <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-table-exit", lang="en-US") }}</dt>
+        <dd class="mt-1 font-medium" id="exit-code">
+            {% set _exit = run.exit_code|default(value=-1) %}
+            {% if _exit == 0 %}
+            <span class="text-green-600">{{ t(key="exit-success", lang="en-US") }}</span>
+            {% elif _exit == -1 %}
+            <span class="text-gray-400">{{ t(key="exit-none", lang="en-US") }}</span>
+            {% else %}
+            <span class="text-red-600">{{ t(key="exit-failed", lang="en-US") }} ({{ run.exit_code }})</span>
+            {% endif %}
+        </dd>
     </div>
 
     <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">

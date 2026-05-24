@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use flate2::read::GzDecoder;
+use loco_rs::app::SharedStore;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
@@ -22,6 +25,71 @@ const STEAMCMD_DIR_NAME: &str = "steamcmd";
 const HLDS_APP_ID: u32 = 90;
 const HLDS_UPDATE_RETRIES: u32 = 5;
 
+/// Health status of the `SteamCMD` installation.
+///
+/// Stored in `AppContext.shared_store` at boot time and read by the
+/// `steamcmd_health()` Tera function to display a banner across all pages.
+#[derive(Debug, Clone)]
+pub enum SteamCmdHealthStatus {
+    /// Health check is still running (boot-time, non-blocking).
+    Checking,
+    /// `SteamCMD` binary exists and executes successfully.
+    Healthy,
+    /// `SteamCMD` binary does not exist on disk.
+    NotInstalled,
+    /// `SteamCMD` binary exists but fails to start (missing deps, permissions).
+    Broken(String),
+}
+
+impl SteamCmdHealthStatus {
+    /// Returns the status as a short string suitable for template conditionals.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Checking => "checking",
+            Self::Healthy => "healthy",
+            Self::NotInstalled => "not_installed",
+            Self::Broken(_) => "broken",
+        }
+    }
+}
+
+/// Static reference to the application's shared store.
+///
+/// Populated by [`set_shared_store`] during initialization so the Tera
+/// function can read health status without receiving `AppContext` as an arg.
+static SHARED_STORE: OnceLock<Arc<SharedStore>> = OnceLock::new();
+
+/// Store a reference to the application's shared store.
+///
+/// Called once during boot by the `SteamCmdInstaller` initializer.
+pub fn set_shared_store(store: &Arc<SharedStore>) {
+    SHARED_STORE.set(store.clone()).ok();
+}
+
+/// Returns the current [`SteamCmdHealthStatus`] from the shared store.
+///
+/// Returns `None` if the store has not been initialized yet.
+pub fn health_status() -> Option<SteamCmdHealthStatus> {
+    SHARED_STORE
+        .get()
+        .and_then(|store| store.get::<SteamCmdHealthStatus>())
+}
+
+/// Tera function registered as `steamcmd_health()`.
+///
+/// Returns the current health status as a string: `"healthy"`,
+/// `"not_installed"`, `"broken"`, or `"checking"`.
+///
+/// # Errors
+/// Returns a [`::tera::Error`] if the Tera function fails.
+#[allow(clippy::implicit_hasher)]
+pub fn tera_steamcmd_health(
+    _args: &HashMap<String, ::tera::Value>,
+) -> ::tera::Result<::tera::Value> {
+    let status = health_status().map_or("checking", |s| s.as_str());
+    Ok(::tera::Value::String(status.to_owned()))
+}
 /// Errors that can occur during `SteamCMD` operations.
 #[derive(Debug)]
 pub enum SteamCmdError {
@@ -49,8 +117,8 @@ impl Display for SteamCmdError {
             Self::CreateDir(err) => write!(f, "failed to create directory: {err}"),
             Self::Spawn(err) => write!(f, "failed to spawn SteamCMD: {err}"),
             Self::ExitStatus(code) => write!(f, "SteamCMD exited with status {code}"),
-            Self::MissingDependencies(hint) => {
-                write!(f, "missing 32-bit dependencies: {hint}")
+            Self::MissingDependencies(details) => {
+                write!(f, "SteamCMD failed to start: {details}")
             }
             Self::Io(err) => write!(f, "I/O error: {err}"),
         }
@@ -115,18 +183,18 @@ impl SteamCmd {
         self.binary_path.exists()
     }
 
-    /// Checks if steamcmd is installed and verifies that required 32-bit
-    /// shared libraries are available on Linux.
+    /// Checks if steamcmd is installed and verifies the binary can actually
+    /// run by executing a live test.
     ///
-    /// On non-Linux platforms, this is equivalent to [`is_installed`][Self::is_installed].
-    ///
-    /// Returns `Ok(())` if all dependencies are satisfied, or
-    /// [`SteamCmdError::MissingDependencies`] with distro-specific install
-    /// instructions.
+    /// This spawns `steamcmd.sh +quit` and checks the exit code. If the binary
+    /// exists but fails to start (missing shared libraries, permission issues,
+    /// etc.), the captured stderr is returned in the error for diagnostics.
     ///
     /// # Errors
-    /// Returns [`SteamCmdError::Io`] if the steamcmd binary is not found, or
-    /// [`SteamCmdError::MissingDependencies`] if 32-bit libraries are missing.
+    /// Returns [`SteamCmdError::Io`] if the steamcmd binary is not found.
+    /// Returns [`SteamCmdError::Spawn`] if the process cannot be started.
+    /// Returns [`SteamCmdError::MissingDependencies`] with the captured stderr
+    /// if the binary exits with a non-zero status.
     pub fn is_installed_with_deps(&self) -> Result<(), SteamCmdError> {
         if !self.is_installed() {
             return Err(SteamCmdError::Io(io::Error::new(
@@ -135,15 +203,17 @@ impl SteamCmd {
             )));
         }
 
-        #[cfg(target_os = "linux")]
-        {
-            if !Self::check_linux_32bit_deps() {
-                let distro_hint = Self::linux_deps_hint();
-                return Err(SteamCmdError::MissingDependencies(distro_hint));
-            }
-        }
+        let output = std::process::Command::new(&self.binary_path)
+            .arg("+quit")
+            .output()
+            .map_err(SteamCmdError::Spawn)?;
 
-        Ok(())
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(SteamCmdError::MissingDependencies(stderr))
+        }
     }
 
     /// Ensures `SteamCMD` is installed on the system.
@@ -418,47 +488,6 @@ impl SteamCmd {
 
         Ok(())
     }
-
-    /// Checks if the required 32-bit shared libraries are available on Linux.
-    #[cfg(target_os = "linux")]
-    fn check_linux_32bit_deps() -> bool {
-        // Check for the presence of 32-bit i386 libraries
-        let lib_dirs = ["/lib/i386-linux-gnu", "/usr/lib/i386-linux-gnu"];
-
-        let has_lib_dir = lib_dirs.iter().any(|dir| Path::new(dir).exists());
-
-        // Also try checking via ldconfig if available
-        let ldconfig_check = std::process::Command::new("ldconfig")
-            .arg("-p")
-            .output()
-            .is_ok_and(|output| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.contains("i386")
-            });
-
-        has_lib_dir || ldconfig_check
-    }
-
-    /// Returns distro-specific instructions for installing 32-bit dependencies.
-    #[cfg(target_os = "linux")]
-    fn linux_deps_hint() -> String {
-        // Detect common distributions and provide specific instructions
-        let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
-
-        if os_release.contains("ubuntu") || os_release.contains("debian") {
-            "Install 32-bit libraries: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install lib32gcc-s1 lib32stdc++6"
-        } else if os_release.contains("fedora") || os_release.contains("rhel") || os_release.contains("centos") {
-            "Install 32-bit libraries: sudo dnf install glibc.i686 libstdc++.i686"
-        } else if os_release.contains("arch") {
-            "Install 32-bit libraries: sudo pacman -S lib32-glibc lib32-libstdcxx"
-        } else if os_release.contains("opensuse") || os_release.contains("suse") {
-            "Install 32-bit libraries: sudo zypper install glibc-32bit libstdc++6-32bit"
-        } else {
-            "Install 32-bit glibc and libstdc++ for your distribution"
-        }
-        .to_string()
-    }
-
     /// Builds the command-line arguments for an `app_update` call without
     /// executing it. Useful for testing and preview.
     #[must_use]
@@ -539,10 +568,10 @@ mod tests {
     #[test]
     fn test_missing_deps_error_display() {
         let err = SteamCmdError::MissingDependencies(
-            "Install 32-bit libraries: sudo apt-get install lib32gcc-s1".to_string(),
+            "error while loading shared libraries: libstdc++.so.6".to_string(),
         );
         let msg = err.to_string();
-        assert!(msg.contains("32-bit"));
-        assert!(msg.contains("Install"));
+        assert!(msg.contains("failed to start"));
+        assert!(msg.contains("libstdc++"));
     }
 }

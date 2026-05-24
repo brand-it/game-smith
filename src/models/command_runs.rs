@@ -192,6 +192,47 @@ impl Model {
             .await
             .map_err(ModelError::from)
     }
+
+    /// Find the most recent `SteamCMD` health check run.
+    ///
+    /// Health check runs are identified by the `SteamCMD` binary path with
+    /// a single `+quit` argument.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn find_last_health_check(ctx: &AppContext) -> Result<Option<Self>, ModelError> {
+        let args_value = serde_json::to_value(vec!["+quit"]).map_err(|e| {
+            ModelError::from(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        })?;
+        Entity::find()
+            .filter(
+                Column::Command
+                    .like("%steamcmd.sh")
+                    .or(Column::Command.like("%steamcmd.exe")),
+            )
+            .filter(Column::Args.eq(args_value))
+            .order_by_desc(Column::CreatedAt)
+            .limit(1)
+            .one(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
+    /// Find the most recent `SteamCMD` installation run.
+    ///
+    /// Installation runs are identified by `command == "steamcmd_install"`.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn find_last_install(ctx: &AppContext) -> Result<Option<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::Command.eq("steamcmd_install"))
+            .order_by_desc(Column::CreatedAt)
+            .limit(1)
+            .one(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
 }
 
 impl Entity {}

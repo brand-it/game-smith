@@ -28,7 +28,16 @@
                 <td class="px-4 py-3">
                     {{ macros::status_badge(status=run.status) }}
                 </td>
-                <td class="px-4 py-3 text-gray-600">{{ run.exit_code|default(value="") }}</td>
+                <td class="px-4 py-3">
+                    {% set _exit = run.exit_code|default(value=-1) %}
+                    {% if _exit == 0 %}
+                    <span class="text-green-600 font-medium">{{ t(key="exit-success", lang="en-US") }}</span>
+                    {% elif _exit == -1 %}
+                    <span class="text-gray-400">{{ t(key="exit-none", lang="en-US") }}</span>
+                    {% else %}
+                    <span class="text-red-600 font-medium">{{ t(key="exit-failed", lang="en-US") }}</span>
+                    {% endif %}
+                </td>
                 <td class="px-4 py-3 text-gray-600 whitespace-nowrap">{{ run.started_at }}</td>
             </tr>
             {% endfor %}

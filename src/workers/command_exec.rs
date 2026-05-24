@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::process::Command;
 
+use crate::data::steamcmd::{set_shared_store, SteamCmdHealthStatus};
 use crate::models::command_runs::Model as CommandRunModel;
 
 pub struct CommandExecWorker {
@@ -119,6 +120,58 @@ impl CommandExecWorker {
             .map_err(|e| loco_rs::Error::string(&format!("failed to update run status: {e}")))?;
         Ok(())
     }
+
+    /// After a health-check run completes, update the shared store so the
+    /// banner across all pages reflects the latest status.
+    ///
+    /// Health-check runs are identified by executing the `SteamCMD` binary
+    /// with a single `+quit` argument.
+    async fn maybe_update_health_status(
+        &self,
+        run_id: i32,
+        final_status: &str,
+        exit_code: Option<i32>,
+    ) {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return;
+        };
+
+        // Health-check runs: steamcmd binary with just +quit
+        if !Self::is_health_check(&model) {
+            return;
+        }
+
+        let status = match (final_status, exit_code) {
+            ("completed", Some(0)) => SteamCmdHealthStatus::Healthy,
+            ("failed", _) => model
+                .log_path
+                .as_ref()
+                .and_then(|log_path| std::fs::read_to_string(log_path).ok())
+                .and_then(|content| content.lines().last().map(String::from))
+                .map_or_else(
+                    || SteamCmdHealthStatus::Broken("health check failed".to_string()),
+                    SteamCmdHealthStatus::Broken,
+                ),
+            _ => SteamCmdHealthStatus::Broken("health check failed".to_string()),
+        };
+
+        set_shared_store(&self.ctx.shared_store);
+        self.ctx.shared_store.insert(status);
+    }
+
+    /// Returns true if this run is a `SteamCMD` health check.
+    ///
+    /// Identified by the command being a `steamcmd` binary and the
+    /// argument list being exactly `["+quit"]`.
+    fn is_health_check(model: &CommandRunModel) -> bool {
+        let is_steamcmd =
+            model.command.ends_with("steamcmd.sh") || model.command.ends_with("steamcmd.exe");
+        let args_quit = model
+            .args
+            .as_array()
+            .is_some_and(|arr| arr.len() == 1 && arr[0].as_str() == Some("+quit"));
+        is_steamcmd && args_quit
+    }
 }
 
 /// Arguments for executing a command via [`CommandExecWorker`].
@@ -156,8 +209,23 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         let mut child = cmd.spawn().map_err(|e| {
             let ctx = self.ctx.clone();
             let rid = run_id;
-            let _ = async move { Self::mark_spawn_failed(&ctx, rid).await };
-            loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+            let is_health_check = Self::is_health_check(&model);
+            let error_msg = e.to_string();
+            let kind = e.kind();
+            let error_msg_clone = error_msg.clone();
+            let _ = async move {
+                Self::mark_spawn_failed(&ctx, rid).await;
+                if is_health_check {
+                    let status = if kind == std::io::ErrorKind::NotFound {
+                        SteamCmdHealthStatus::NotInstalled
+                    } else {
+                        SteamCmdHealthStatus::Broken(error_msg_clone)
+                    };
+                    set_shared_store(&ctx.shared_store);
+                    ctx.shared_store.insert(status);
+                }
+            };
+            loco_rs::Error::string(&format!("failed to spawn process: {error_msg}"))
         })?;
 
         // 5. Store PID in database
@@ -173,8 +241,10 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
 
         // 7. Determine and persist final status
         let (final_status, exit_code) = Self::determine_status(status);
-        self.update_final_status(run_id, exit_code, final_status)
+        self.update_final_status(run_id, exit_code, final_status.clone())
             .await?;
+        self.maybe_update_health_status(run_id, &final_status, exit_code)
+            .await;
 
         Ok(())
     }

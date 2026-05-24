@@ -9,6 +9,20 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+        {% set health = steamcmd_health() %}
+        {% if health != "healthy" %}
+        <div class="mb-4 rounded text-center text-sm font-medium {% if health == "checking" %}bg-blue-50 text-blue-700{% elif health == "not_installed" %}bg-amber-50 text-amber-700{% else %}bg-red-50 text-red-700{% endif %}">
+            {% if health == "checking" %}
+            Checking SteamCMD status&hellip;
+            {% elif health == "not_installed" %}
+            SteamCMD not installed —
+            <a href="/steamcmd" class="underline underline-offset-2 hover:opacity-80">install</a>
+            {% else %}
+            SteamCMD not working —
+            <a href="/steamcmd" class="underline underline-offset-2 hover:opacity-80">details</a>
+            {% endif %}
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </div>
     {% block extra_scripts %}{% endblock %}

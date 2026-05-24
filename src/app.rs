@@ -18,6 +18,7 @@ use crate::{
     controllers, initializers, tasks,
     workers::{
         command_exec::CommandExecWorker, downloader::DownloadWorker, log_cleanup::LogCleanupWorker,
+        steamcmd_install::SteamCmdInstallWorker,
     },
 };
 
@@ -70,9 +71,9 @@ impl Hooks for App {
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![
+            Box::new(initializers::steamcmd::SteamCmdInstaller),
             Box::new(initializers::view_engine::ViewEngineInitializer),
             Box::new(initializers::command_log_socket::CommandLogInitializer),
-            Box::new(initializers::steamcmd::SteamCmdInstaller),
         ])
     }
 
@@ -86,6 +87,7 @@ impl Hooks for App {
         queue.register(DownloadWorker::build(ctx)).await?;
         queue.register(CommandExecWorker::build(ctx)).await?;
         queue.register(LogCleanupWorker::build(ctx)).await?;
+        queue.register(SteamCmdInstallWorker::build(ctx)).await?;
         Ok(())
     }
 
