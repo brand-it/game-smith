@@ -3,3 +3,4 @@
 pub mod prelude;
 
 pub mod command_runs;
+pub mod game_servers;

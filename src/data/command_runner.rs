@@ -8,7 +8,7 @@ use loco_rs::model::ModelError;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::command_runs::{ActiveModel, Model as CommandRunModel};
+use crate::models::command_runs::{ActiveModel, CommandStatus, Model as CommandRunModel};
 use crate::workers::command_exec::{CommandExecWorker, CommandExecWorkerArgs};
 
 /// Represents a command execution result with metadata.
@@ -18,7 +18,7 @@ pub struct CommandRun {
     pub command: String,
     pub args: Vec<String>,
     pub log_path: Option<String>,
-    pub status: String,
+    pub status: CommandStatus,
     pub exit_code: Option<i32>,
     pub title: Option<String>,
 }
@@ -41,7 +41,7 @@ impl CommandRun {
             command: model.command.clone(),
             args,
             log_path: model.log_path.clone(),
-            status: model.status.clone(),
+            status: model.status(),
             exit_code: model.exit_code,
             title: model.title.clone(),
         }
@@ -88,6 +88,7 @@ impl CommandRunner {
         working_dir: Option<String>,
         env: Option<HashMap<String, String>>,
         title: Option<String>,
+        server_id: Option<i64>,
     ) -> Result<CommandRun, ModelError> {
         // Create log file path: logs_dir/YYYY-MM-DD/{uuid}.log
         let date_dir = Local::now().format("%Y-%m-%d").to_string();
@@ -113,6 +114,7 @@ impl CommandRunner {
             env,
             log_path_str,
             title,
+            server_id,
         )
         .await?;
 
@@ -186,9 +188,7 @@ impl CommandRunner {
 
         // If we have a PID, verify the process is actually alive
         if let Some(pid) = model.pid {
-            // Send signal 0 to check if process exists (no actual signal sent)
-            #[allow(clippy::cast_possible_truncation)]
-            let alive = unsafe { libc::kill(pid as libc::c_int, 0) == 0 };
+            let alive = crate::models::game_servers::check_pid_alive(pid);
             return Ok(alive);
         }
 
@@ -214,14 +214,13 @@ impl CommandRunner {
 
         // Try to terminate the process if we have a PID
         if let Some(pid) = model.pid {
-            #[allow(clippy::cast_possible_truncation)]
-            let _ = unsafe { libc::kill(pid as libc::c_int, libc::SIGTERM) };
+            let _ = crate::models::game_servers::kill_pid(pid, libc::SIGTERM);
         }
 
         // Mark as stopped in DB
         let mut active: crate::models::command_runs::ActiveModel = model.into();
         active
-            .finish(&self.ctx, Some(-1), "stopped".to_string())
+            .finish(&self.ctx, Some(-1), CommandStatus::Failed)
             .await?;
 
         Ok(())

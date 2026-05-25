@@ -16,7 +16,6 @@ use crate::initializers::command_namespace;
 /// - A `subscribe` handler that spawns a poll-based streaming loop
 ///   for the given `run_id`.
 /// - A disconnect handler that cancels all active streaming tasks.
-#[allow(clippy::module_name_repetitions)]
 pub struct CommandLogInitializer;
 
 #[async_trait]

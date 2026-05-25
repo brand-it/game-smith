@@ -5,6 +5,7 @@ pub use sea_orm_migration::seaql_migrations;
 
 mod m20260523_192956_command_runs;
 mod m20260524_201932_command_run_title;
+mod m20260524_211537_create_game_servers;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -13,6 +14,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260523_192956_command_runs::Migration),
             Box::new(m20260524_201932_command_run_title::Migration),
+            Box::new(m20260524_211537_create_game_servers::Migration),
             // inject-above (do not remove this comment)
         ]
     }

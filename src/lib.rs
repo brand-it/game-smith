@@ -5,6 +5,7 @@ pub mod data;
 pub mod desktop;
 pub mod initializers;
 pub mod models;
+pub mod scheduler;
 pub mod tasks;
 pub mod views;
 pub mod workers;
@@ -40,6 +41,13 @@ impl AppDirs {
     pub fn db_uri(&self) -> String {
         format!("sqlite://{}?mode=rwc", self.db_path.display())
     }
+
+    /// Returns the `SQLite` connection URI for the test database.
+    #[must_use]
+    pub fn test_db_uri(&self) -> String {
+        let test_path = self.app_dir.join("game-smith_test.sqlite");
+        format!("sqlite://{}?mode=rwc", test_path.display())
+    }
 }
 /// Resolve the user's XDG data home directory.
 ///
@@ -48,6 +56,20 @@ impl AppDirs {
 pub fn resolve_data_home() -> String {
     std::env::var("XDG_DATA_HOME")
         .unwrap_or_else(|_| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()))
+}
+
+/// The canonical `SQLite` URI for the application database.
+/// Single source of truth — all code paths MUST use this.
+/// Returns the test DB URI when `APP_ENV` is set to `test`.
+#[must_use]
+pub fn canonical_db_uri() -> String {
+    let env = loco_rs::environment::Environment::from(loco_rs::environment::resolve_from_env());
+    let dirs = AppDirs::new(resolve_data_home());
+    if matches!(env, loco_rs::environment::Environment::Test) {
+        dirs.test_db_uri()
+    } else {
+        dirs.db_uri()
+    }
 }
 
 /// Create the application's data directories.

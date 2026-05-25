@@ -17,7 +17,6 @@ use crate::{resolve_data_home, AppDirs};
 /// Runs a non-blocking health check that verifies the binary exists AND can
 /// execute. Stores the result in the shared store so controllers and templates
 /// can read the status. Also creates a `CommandRun` record for auditability.
-#[allow(clippy::module_name_repetitions)]
 pub struct SteamCmdInstaller;
 
 #[async_trait]
@@ -56,6 +55,7 @@ impl Initializer for SteamCmdInstaller {
                 None,
                 log_path_str,
                 Some("SteamCMD Health Check".to_string()),
+                None,
             )
             .await;
 

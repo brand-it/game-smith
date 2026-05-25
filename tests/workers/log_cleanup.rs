@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use game_smith::app::App;
-use game_smith::models::command_runs::{ActiveModel, Model as CommandRunModel};
+use game_smith::models::command_runs::{ActiveModel, CommandStatus, Model as CommandRunModel};
 use game_smith::workers::log_cleanup::LogCleanupWorker;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::testing::prelude::*;
@@ -63,13 +63,14 @@ async fn test_truncate_oversized_logs() {
         None,
         Some(log_path_str.clone()),
         None,
+        None,
     )
     .await
     .expect("Failed to create run");
 
     let mut active: ActiveModel = model.into();
     active
-        .finish(&boot.app_context, Some(0), "completed".to_string())
+        .finish(&boot.app_context, Some(0), CommandStatus::Completed)
         .await
         .expect("Failed to finish run");
 
@@ -119,6 +120,7 @@ async fn test_vacuum_missing_logs() {
         None,
         Some(log_path_str.clone()),
         None,
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -127,7 +129,7 @@ async fn test_vacuum_missing_logs() {
 
     let mut active: ActiveModel = model.into();
     active
-        .finish(&boot.app_context, Some(0), "completed".to_string())
+        .finish(&boot.app_context, Some(0), CommandStatus::Completed)
         .await
         .expect("Failed to finish run");
 
@@ -195,6 +197,7 @@ async fn test_remove_stale_logs() {
         None,
         Some(log_path_str.clone()),
         None,
+        None,
     )
     .await
     .expect("Failed to create run");
@@ -203,7 +206,7 @@ async fn test_remove_stale_logs() {
 
     let mut active: ActiveModel = model.into();
     active
-        .finish(&boot.app_context, Some(0), "completed".to_string())
+        .finish(&boot.app_context, Some(0), CommandStatus::Completed)
         .await
         .expect("Failed to finish run");
 

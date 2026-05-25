@@ -1,9 +1,20 @@
-use game_smith::{app::App, create_data_dirs, resolve_data_home, AppDirs};
-use loco_rs::cli;
-use migration::Migrator;
 use std::io::Write;
 
-fn main() -> loco_rs::Result<()> {
+use game_smith::app::clean_stale_migrations;
+use game_smith::{app::App, create_data_dirs, resolve_data_home, AppDirs};
+use loco_rs::app::Hooks;
+use loco_rs::boot::{create_app, start, ServeParams, StartMode};
+use loco_rs::cli;
+use loco_rs::Result;
+use migration::Migrator;
+
+/// Determine whether the current invocation should boot the server.
+/// Defaults to `start` when no subcommand is given.
+fn should_start_server() -> bool {
+    matches!(std::env::args().nth(1).as_deref(), Some("start") | None)
+}
+
+fn main() -> Result<()> {
     game_smith::install_panic_hook();
 
     // Resolve app data directories once; reuse for dirs and boot log.
@@ -11,7 +22,18 @@ fn main() -> loco_rs::Result<()> {
     create_data_dirs(&dirs);
     write_boot_log(&dirs);
 
-    // Single-instance guard — must run before GTK and before tokio.
+    if should_start_server() {
+        run_server()
+    } else {
+        run_cli()
+    }
+}
+
+/// Synchronous entry point for server mode.
+/// Runs on thread 0 so that GTK / tray initialization happens before
+/// the tokio multi-thread runtime moves execution elsewhere.
+fn run_server() -> Result<()> {
+    // Single-instance guard.
     let config = load_desktop_config();
     let port = config.port;
     if std::net::TcpListener::bind(format!("127.0.0.1:{port}")).is_err() {
@@ -22,30 +44,23 @@ fn main() -> loco_rs::Result<()> {
 
     // GTK and the tray icon MUST be initialized on thread 0, before the tokio
     // multi-thread runtime starts (which moves execution off the OS main thread).
-    let _desktop_handle = {
-        let config = load_desktop_config();
-        if config.enabled {
-            let server_url = format!("http://127.0.0.1:{}", config.port);
-            let manager = game_smith::desktop::DesktopManager::new(config, server_url);
-            // Only auto-open the browser when actually starting the server.
-            let is_start = std::env::args().nth(1).as_deref() == Some("start");
-            if is_start {
-                manager.open_browser();
+    let _desktop_handle = if config.enabled {
+        let server_url = format!("http://127.0.0.1:{}", config.port);
+        let manager = game_smith::desktop::DesktopManager::new(config, server_url);
+        manager.open_browser();
+        let handle = manager.spawn_tray();
+        eprintln!(
+            "game-smith: tray handle = {}",
+            if handle.is_some() {
+                "Some (created)"
+            } else {
+                "None (failed)"
             }
-            let handle = manager.spawn_tray();
-            eprintln!(
-                "game-smith: tray handle = {}",
-                if handle.is_some() {
-                    "Some (created)"
-                } else {
-                    "None (failed)"
-                }
-            );
-            handle
-        } else {
-            eprintln!("game-smith: desktop disabled");
-            None
-        }
+        );
+        handle
+    } else {
+        eprintln!("game-smith: desktop disabled");
+        None
     };
 
     // Start the tokio runtime only after GTK/tray setup is complete.
@@ -53,7 +68,53 @@ fn main() -> loco_rs::Result<()> {
         .enable_all()
         .build()
         .expect("failed to build tokio runtime")
+        .block_on(boot_server())
+}
+
+/// Synchronous entry point for CLI subcommands (db, task, etc.).
+fn run_cli() -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime")
         .block_on(async { cli::main::<App, Migrator>().await })
+}
+
+/// Boot the app with the server, workers, and scheduler all running in-process.
+/// The scheduler config is embedded in code via `App::load_config`.
+async fn boot_server() -> Result<()> {
+    use loco_rs::boot::create_context;
+
+    let environment =
+        loco_rs::environment::Environment::from(loco_rs::environment::resolve_from_env());
+    let config = App::load_config(&environment).await?;
+
+    clean_stale_migrations(&config.database.uri).await;
+
+    let app_context = create_context::<App>(&environment, config).await?;
+
+    if !App::init_logger(&app_context)? {
+        loco_rs::logger::init::<App>(&app_context.config.logger)?;
+    }
+
+    let boot =
+        create_app::<App, Migrator>(StartMode::ServerAndWorker, &environment, app_context.config)
+            .await?;
+
+    // Spawn custom in-process scheduler.
+    let ctx_for_scheduler = boot.app_context.clone();
+    tokio::spawn(async move {
+        if let Err(e) = game_smith::scheduler::run_scheduler(&ctx_for_scheduler).await {
+            tracing::error!(err = %e, "scheduler exited with error");
+        }
+    });
+
+    let serve_params = ServeParams {
+        port: boot.app_context.config.server.port,
+        binding: boot.app_context.config.server.binding.clone(),
+    };
+
+    start::<App>(boot, serve_params, false).await
 }
 
 /// Write a one-line boot record to a plain text file before anything else

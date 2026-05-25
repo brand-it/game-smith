@@ -1,0 +1,111 @@
+{% extends "_layout/base.html" %}
+{% import "_macros/status_badge.html" as macros %}
+
+{% block title %}{{ server.name }} — Game Servers{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:24px">
+    <a href="/servers" style="font-size:0.875rem;color:#64748b;text-decoration:none" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#64748b'">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+        <h1 style="font-size:1.5rem;font-weight:700;color:#0f172a;margin:0">{{ server.name }}</h1>
+        {{ macros::status_badge(status=server.status) }}
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+
+    <!-- Server Info -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:24px">
+        <h2 style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 16px">{{ t(key="servers-info", lang="en-US") }}</h2>
+        <dl style="margin:0">
+            <div style="padding:8px 0;border-bottom:1px solid #f1f5f9">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-app-id", lang="en-US") }}</dt>
+                <dd style="font-family:monospace;font-size:0.875rem;color:#0f172a;margin:0">{{ server.app_id }}</dd>
+            </div>
+            <div style="padding:8px 0;border-bottom:1px solid #f1f5f9">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-platform", lang="en-US") }}</dt>
+                <dd style="font-size:0.875rem;color:#0f172a;margin:0">{{ server.platform }}</dd>
+            </div>
+            <div style="padding:8px 0;{% if server.server_mod or server.beta_branch or server.last_error %}border-bottom:1px solid #f1f5f9;{% endif %}">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-install-dir", lang="en-US") }}</dt>
+                <dd style="font-family:monospace;font-size:0.75rem;color:#0f172a;margin:0;word-break:break-all">{{ server.install_dir }}</dd>
+            </div>
+            {% if server.server_mod %}
+            <div style="padding:8px 0;{% if server.beta_branch or server.last_error %}border-bottom:1px solid #f1f5f9;{% endif %}">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-mod", lang="en-US") }}</dt>
+                <dd style="font-size:0.875rem;color:#0f172a;margin:0">{{ server.server_mod }}</dd>
+            </div>
+            {% endif %}
+            {% if server.beta_branch %}
+            <div style="padding:8px 0;{% if server.last_error %}border-bottom:1px solid #f1f5f9;{% endif %}">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-beta-branch", lang="en-US") }}</dt>
+                <dd style="font-size:0.875rem;color:#0f172a;margin:0">{{ server.beta_branch }}</dd>
+            </div>
+            {% endif %}
+            {% if server.last_error %}
+            <div style="padding:8px;background:#fef2f2;border-radius:4px;margin-top:8px">
+                <dt style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px">{{ t(key="servers-last-error", lang="en-US") }}</dt>
+                <dd style="font-size:0.875rem;color:#dc2626;margin:0">{{ server.last_error }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+
+    <!-- Actions -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:24px">
+        <h2 style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 16px">{{ t(key="servers-actions", lang="en-US") }}</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            {% if not server.is_running %}
+            <form action="/servers/{{ server.id }}/start" method="post" style="margin:0">
+                <button type="submit" style="width:100%;padding:9px 16px;background:#16a34a;color:#fff;font-size:0.875rem;font-weight:500;border:none;border-radius:6px;cursor:pointer;text-align:left"
+                    onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+                    ▶&nbsp; {{ t(key="servers-start", lang="en-US") }}
+                </button>
+            </form>
+            {% endif %}
+            {% if server.is_running %}
+            <form action="/servers/{{ server.id }}/stop" method="post" style="margin:0">
+                <button type="submit" style="width:100%;padding:9px 16px;background:#dc2626;color:#fff;font-size:0.875rem;font-weight:500;border:none;border-radius:6px;cursor:pointer;text-align:left"
+                    onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+                    ■&nbsp; {{ t(key="servers-stop", lang="en-US") }}
+                </button>
+            </form>
+            {% endif %}
+            {% if server.is_installed or server.is_error %}
+            <form action="/servers/{{ server.id }}/update" method="post" style="margin:0">
+                <button type="submit" style="width:100%;padding:9px 16px;background:#2563eb;color:#fff;font-size:0.875rem;font-weight:500;border:none;border-radius:6px;cursor:pointer;text-align:left"
+                    onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+                    ↻&nbsp; {{ t(key="servers-update", lang="en-US") }}
+                </button>
+            </form>
+            {% endif %}
+            <form action="/servers/{{ server.id }}" method="post" style="margin:0" onsubmit="return confirm('{{ t(key="servers-delete-confirm", lang="en-US") }}')">
+                <input type="hidden" name="_method" value="DELETE">
+                <button type="submit" style="width:100%;padding:9px 16px;background:#f8fafc;color:#64748b;font-size:0.875rem;font-weight:500;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;text-align:left"
+                    onmouseover="this.style.background='#fef2f2';this.style.color='#dc2626';this.style.borderColor='#fca5a5'" onmouseout="this.style.background='#f8fafc';this.style.color='#64748b';this.style.borderColor='#e2e8f0'">
+                    {{ t(key="servers-delete", lang="en-US") }}
+                </button>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<!-- Boot Script -->
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:24px">
+    <h2 style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px">{{ t(key="servers-boot-script", lang="en-US") }}</h2>
+    <p style="font-size:0.875rem;color:#64748b;margin:0 0 12px">{{ t(key="servers-boot-script-help", lang="en-US") }}</p>
+    <form action="/servers/{{ server.id }}/boot-script" method="post">
+        <textarea name="boot_script" rows="5"
+            style="display:block;width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:0.875rem;color:#0f172a;background:#f8fafc;resize:vertical;outline:none"
+            placeholder="# e.g. ./srcds_run -game csgo +map de_dust2"
+            onfocus="this.style.borderColor='#2563eb';this.style.background='#fff'" onblur="this.style.borderColor='#d1d5db';this.style.background='#f8fafc'">{{ server.boot_script|default(value="") }}</textarea>
+        <div style="margin-top:10px">
+            <button type="submit" style="padding:8px 20px;background:#2563eb;color:#fff;font-size:0.875rem;font-weight:500;border:none;border-radius:6px;cursor:pointer"
+                onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+                {{ t(key="servers-save-boot-script", lang="en-US") }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

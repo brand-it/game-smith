@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use tokio::process::Command;
 
 use crate::data::steamcmd::{set_shared_store, SteamCmdHealthStatus};
-use crate::models::command_runs::Model as CommandRunModel;
+use crate::models::command_runs::{CommandStatus, Model as CommandRunModel};
 
 pub struct CommandExecWorker {
     pub ctx: AppContext,
@@ -79,7 +79,7 @@ impl CommandExecWorker {
     async fn mark_spawn_failed(ctx: &AppContext, run_id: i32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
-            let _ = active.finish(ctx, Some(-1), "failed".to_string()).await;
+            let _ = active.finish(ctx, Some(-1), CommandStatus::Failed).await;
         }
     }
 
@@ -92,13 +92,13 @@ impl CommandExecWorker {
     }
 
     /// Determine the final status and exit code from a process exit status.
-    fn determine_status(status: std::process::ExitStatus) -> (String, Option<i32>) {
+    fn determine_status(status: std::process::ExitStatus) -> (CommandStatus, Option<i32>) {
         if status.success() {
-            ("completed".to_string(), Some(0))
+            (CommandStatus::Completed, Some(0))
         } else if let Some(code) = status.code() {
-            ("failed".to_string(), Some(code))
+            (CommandStatus::Failed, Some(code))
         } else {
-            ("failed".to_string(), None)
+            (CommandStatus::Failed, None)
         }
     }
 
@@ -107,7 +107,7 @@ impl CommandExecWorker {
         &self,
         run_id: i32,
         exit_code: Option<i32>,
-        final_status: String,
+        final_status: CommandStatus,
     ) -> Result<()> {
         let model = CommandRunModel::find_by_id(&self.ctx, run_id)
             .await
@@ -118,6 +118,7 @@ impl CommandExecWorker {
             .finish(&self.ctx, exit_code, final_status)
             .await
             .map_err(|e| loco_rs::Error::string(&format!("failed to update run status: {e}")))?;
+
         Ok(())
     }
 
@@ -129,7 +130,7 @@ impl CommandExecWorker {
     async fn maybe_update_health_status(
         &self,
         run_id: i32,
-        final_status: &str,
+        final_status: CommandStatus,
         exit_code: Option<i32>,
     ) {
         let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
@@ -142,8 +143,8 @@ impl CommandExecWorker {
         }
 
         let status = match (final_status, exit_code) {
-            ("completed", Some(0)) => SteamCmdHealthStatus::Healthy,
-            ("failed", _) => model
+            (CommandStatus::Completed, Some(0)) => SteamCmdHealthStatus::Healthy,
+            (CommandStatus::Failed, _) => model
                 .log_path
                 .as_ref()
                 .and_then(|log_path| std::fs::read_to_string(log_path).ok())
@@ -186,7 +187,6 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         Self { ctx: ctx.clone() }
     }
 
-    #[allow(clippy::let_underscore_future)]
     async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
         let CommandExecWorkerArgs { run_id } = args;
 
@@ -213,7 +213,7 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
             let error_msg = e.to_string();
             let kind = e.kind();
             let error_msg_clone = error_msg.clone();
-            let _ = async move {
+            tokio::spawn(async move {
                 Self::mark_spawn_failed(&ctx, rid).await;
                 if is_health_check {
                     let status = if kind == std::io::ErrorKind::NotFound {
@@ -224,7 +224,7 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
                     set_shared_store(&ctx.shared_store);
                     ctx.shared_store.insert(status);
                 }
-            };
+            });
             loco_rs::Error::string(&format!("failed to spawn process: {error_msg}"))
         })?;
 
@@ -241,9 +241,9 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
 
         // 7. Determine and persist final status
         let (final_status, exit_code) = Self::determine_status(status);
-        self.update_final_status(run_id, exit_code, final_status.clone())
+        self.update_final_status(run_id, exit_code, final_status)
             .await?;
-        self.maybe_update_health_status(run_id, &final_status, exit_code)
+        self.maybe_update_health_status(run_id, final_status, exit_code)
             .await;
 
         Ok(())

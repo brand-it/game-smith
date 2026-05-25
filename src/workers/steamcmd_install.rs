@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::data::steamcmd::{set_shared_store, SteamCmd, SteamCmdHealthStatus};
-use crate::models::command_runs::Model as CommandRunModel;
+use crate::models::command_runs::{CommandStatus, Model as CommandRunModel};
 use crate::{resolve_data_home, AppDirs};
 
 /// Worker that performs the `SteamCMD` installation (download + extract).
@@ -51,7 +51,7 @@ impl SteamCmdInstallWorker {
                 if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
                     let _ = active
-                        .finish(&self.ctx, Some(0), "completed".to_string())
+                        .finish(&self.ctx, Some(0), CommandStatus::Completed)
                         .await;
                 }
             }
@@ -70,7 +70,7 @@ impl SteamCmdInstallWorker {
                 if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
                     let _ = active
-                        .finish(&self.ctx, Some(1), "failed".to_string())
+                        .finish(&self.ctx, Some(1), CommandStatus::Failed)
                         .await;
                 }
             }

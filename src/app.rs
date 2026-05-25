@@ -45,18 +45,73 @@ impl Hooks for App {
             return Config::new(env);
         }
 
-        let mut config = Config::new(env)?;
         let dirs = super::AppDirs::new(super::resolve_data_home());
+        let logs_dir = dirs.logs_dir.to_string_lossy().to_string();
 
-        // Override database URI with computed XDG path.
-        config.database.uri = dirs.db_uri();
-
-        // Override log directory with computed XDG path.
-        if let Some(file_appender) = &mut config.logger.file_appender {
-            file_appender.dir = Some(dirs.logs_dir.to_string_lossy().to_string());
-        }
-
-        clean_stale_migrations(&config.database.uri).await;
+        let config = Config {
+            logger: loco_rs::config::Logger {
+                enable: true,
+                pretty_backtrace: true,
+                level: loco_rs::logger::LogLevel::Debug,
+                file_appender: Some(loco_rs::config::LoggerFileAppender {
+                    enable: true,
+                    non_blocking: true,
+                    level: loco_rs::logger::LogLevel::Debug,
+                    format: loco_rs::logger::Format::Json,
+                    rotation: loco_rs::logger::Rotation::Daily,
+                    dir: Some(logs_dir),
+                    filename_prefix: Some("game-smith".to_string()),
+                    filename_suffix: Some("log".to_string()),
+                    max_log_files: 7,
+                }),
+                ..Default::default()
+            },
+            server: loco_rs::config::Server {
+                port: 5150,
+                binding: "127.0.0.1".to_string(),
+                host: "http://127.0.0.1".to_string(),
+                ident: None,
+                middlewares: loco_rs::controller::middleware::Config {
+                    static_assets: Some(
+                        loco_rs::controller::middleware::static_assets::StaticAssets {
+                            enable: true,
+                            must_exist: true,
+                            folder: loco_rs::controller::middleware::static_assets::FolderConfig {
+                                uri: "/static".to_string(),
+                                path: std::path::PathBuf::from("assets/static"),
+                            },
+                            fallback: std::path::PathBuf::from("assets/static/404.html"),
+                            precompressed: false,
+                            cache_control: None,
+                        },
+                    ),
+                    ..Default::default()
+                },
+            },
+            database: loco_rs::config::Database {
+                uri: super::canonical_db_uri(),
+                enable_logging: false,
+                min_connections: 1,
+                max_connections: 1,
+                connect_timeout: 500,
+                idle_timeout: 500,
+                acquire_timeout: None,
+                auto_migrate: true,
+                dangerously_truncate: false,
+                dangerously_recreate: false,
+                run_on_start: None,
+            },
+            cache: loco_rs::config::CacheConfig::default(),
+            queue: None,
+            auth: None,
+            workers: loco_rs::config::Workers {
+                mode: loco_rs::config::WorkerMode::BackgroundAsync,
+            },
+            mailer: None,
+            initializers: None,
+            settings: None,
+            scheduler: None,
+        };
 
         Ok(config)
     }
@@ -71,6 +126,7 @@ impl Hooks for App {
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![
+            Box::new(initializers::db_validator::DbValidator),
             Box::new(initializers::steamcmd::SteamCmdInstaller),
             Box::new(initializers::view_engine::ViewEngineInitializer),
             Box::new(initializers::command_log_socket::CommandLogInitializer),
@@ -81,6 +137,7 @@ impl Hooks for App {
         AppRoutes::with_default_routes()
             .add_route(controllers::commands::routes())
             .add_route(controllers::steamcmd::routes())
+            .add_route(controllers::game_servers::routes())
             .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
@@ -88,11 +145,13 @@ impl Hooks for App {
         queue.register(CommandExecWorker::build(ctx)).await?;
         queue.register(LogCleanupWorker::build(ctx)).await?;
         queue.register(SteamCmdInstallWorker::build(ctx)).await?;
+
         Ok(())
     }
 
     #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(tasks::pid_liveness::PidLiveness);
         // tasks-inject (do not remove)
     }
     async fn truncate(_ctx: &AppContext) -> Result<()> {

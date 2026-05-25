@@ -1,0 +1,62 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}{{ t(key="servers-new-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:24px">
+    <a href="/servers" style="font-size:0.875rem;color:#64748b;text-decoration:none" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#64748b'">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
+    <h1 style="font-size:1.5rem;font-weight:700;color:#0f172a;margin:8px 0 0">{{ t(key="servers-new-title", lang="en-US") }}</h1>
+</div>
+
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:32px;max-width:560px">
+    <form action="/servers" method="post">
+        <div style="margin-bottom:20px">
+            <label for="app_id" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-app-id", lang="en-US") }}</label>
+            <input type="text" name="app_id" id="app_id" required placeholder="730"
+                style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+            <p style="margin:4px 0 0;font-size:0.75rem;color:#64748b">{{ t(key="servers-form-app-id-help", lang="en-US") }}</p>
+            <p style="margin:2px 0 0;font-size:0.75rem;color:#64748b">
+                {{ t(key="servers-form-app-id-link-text", lang="en-US") }}
+                <a href="https://steamdb.info/apps/" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none"
+                    onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">steamdb.info/apps</a>
+            </p>
+        </div>
+
+        <div style="margin-bottom:20px">
+            <label for="name" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-name", lang="en-US") }}</label>
+            <input type="text" name="name" id="name" required placeholder="{{ t(key="servers-form-name-placeholder", lang="en-US") }}"
+                style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+        </div>
+
+        <div style="margin-bottom:20px">
+            <label for="server_mod" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-mod", lang="en-US") }}</label>
+            <input type="text" name="server_mod" id="server_mod" placeholder="{{ t(key="servers-form-mod-placeholder", lang="en-US") }}"
+                style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+            <p style="margin:4px 0 0;font-size:0.75rem;color:#64748b">{{ t(key="servers-form-mod-help", lang="en-US") }}</p>
+        </div>
+
+        <div style="margin-bottom:28px">
+            <label for="beta_branch" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-beta", lang="en-US") }}</label>
+            <input type="text" name="beta_branch" id="beta_branch" placeholder="{{ t(key="servers-form-beta-placeholder", lang="en-US") }}"
+                style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+            <button type="submit"
+                style="padding:9px 24px;background:#2563eb;color:#fff;font-size:0.875rem;font-weight:500;border:none;border-radius:6px;cursor:pointer"
+                onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+                {{ t(key="servers-form-install", lang="en-US") }}
+            </button>
+            <a href="/servers" style="font-size:0.875rem;color:#64748b;text-decoration:none" onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#64748b'">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

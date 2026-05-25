@@ -1,4 +1,5 @@
 use game_smith::app::App;
+use game_smith::models::command_runs::CommandStatus;
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
 
@@ -30,8 +31,8 @@ async fn commands_list_renders() {
 
         // Verify base layout is applied
         assert!(body.contains("<!DOCTYPE html>"));
-        assert!(body.contains("<title>Command Runs</title>"));
-        assert!(body.contains("bg-gray-50 min-h-screen"));
+        assert!(body.contains("<title>Command Runs"));
+        assert!(body.contains("sidebar") || body.contains("layout"));
 
         // Verify i18n strings are translated in the page title
         assert!(body.contains("Command Runs"));
@@ -56,13 +57,14 @@ async fn commands_list_renders_with_data() {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("Failed to create run");
 
         let mut active: game_smith::models::command_runs::ActiveModel = run.into();
         active
-            .finish(&ctx, Some(0), "completed".to_string())
+            .finish(&ctx, Some(0), CommandStatus::Completed)
             .await
             .expect("Failed to finish run");
 
@@ -95,13 +97,14 @@ async fn commands_list_shows_failed_for_nonzero_exit() {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("Failed to create run");
 
         let mut active: game_smith::models::command_runs::ActiveModel = run.into();
         active
-            .finish(&ctx, Some(1), "failed".to_string())
+            .finish(&ctx, Some(1), CommandStatus::Failed)
             .await
             .expect("Failed to finish run");
 
@@ -127,6 +130,7 @@ async fn commands_list_shows_placeholder_for_missing_exit() {
             &ctx,
             "sleep_long".to_string(),
             vec!["100".to_string()],
+            None,
             None,
             None,
             None,

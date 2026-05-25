@@ -10,7 +10,6 @@ use tracing::info;
 
 const I18N_DIR: &str = "assets/i18n";
 const I18N_SHARED: &str = "assets/i18n/_shared.ftl";
-#[allow(clippy::module_name_repetitions)]
 pub struct ViewEngineInitializer;
 
 #[async_trait]

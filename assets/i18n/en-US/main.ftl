@@ -1,3 +1,9 @@
+# Navigation
+nav-dashboard = Dashboard
+nav-servers = Game Servers
+nav-steamcmd = SteamCMD
+nav-commands = Commands
+
 hello-world = Hello World!
 greeting = Hello { $name }!
         .placeholder = Hello Friend!
@@ -42,3 +48,50 @@ status-stopped = Stopped
 exit-success = Success
 exit-failed = Failed
 exit-none = —
+
+# Game Servers
+servers-title = Game Servers
+servers-back = Back to list
+servers-new = New Server
+servers-empty = No game servers found. Install your first server to get started.
+servers-table-name = Name
+servers-table-app-id = App ID
+servers-table-platform = Platform
+servers-table-status = Status
+servers-table-install-dir = Install Dir
+servers-detail-title = Game Server
+servers-info = Server Info
+servers-app-id = App ID
+servers-platform = Platform
+servers-install-dir = Install Directory
+servers-mod = Mod
+servers-beta-branch = Beta Branch
+servers-last-error = Last Error
+servers-actions = Actions
+servers-start = Start Server
+servers-stop = Stop Server
+servers-update = Update Game
+servers-delete = Delete Server
+servers-delete-confirm = Are you sure you want to delete this server? This will not remove installed files.
+servers-boot-script = Boot Script
+servers-boot-script-help = Shell command or script to start the game server. Leave empty to auto-detect.
+servers-save-boot-script = Save Boot Script
+servers-new-title = Install Game Server
+servers-form-app-id = Steam App ID
+servers-form-app-id-help = The Steam App ID for the game server (e.g., 730 for CS2, 740 for CS:GO).
+servers-form-app-id-link-text = Find app IDs at
+servers-form-name = Server Name
+servers-form-name-placeholder = My CS2 Server
+servers-form-platform = Target Platform
+servers-form-mod = Server Mod (optional)
+servers-form-mod-placeholder = czero
+servers-form-mod-help = Mod name for Half-Life 1 games (e.g., czero, dmc, tfc).
+servers-form-beta = Beta Branch (optional)
+servers-form-beta-placeholder = public
+servers-form-install = Install Server
+
+# Additional status badges
+status-pending = Pending
+status-installing = Installing
+status-installed = Installed
+status-error = Error

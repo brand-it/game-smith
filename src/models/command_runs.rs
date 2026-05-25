@@ -6,6 +6,54 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, ActiveValue, QueryOrder, QuerySelect};
 use std::collections::HashMap;
 pub type CommandRuns = Entity;
+use serde::{Deserialize, Serialize};
+
+/// Possible values for the `command_runs.status` column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommandStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+impl CommandStatus {
+    /// Returns the canonical lowercase database representation.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+impl std::str::FromStr for CommandStatus {
+    type Err = std::convert::Infallible;
+
+    /// Parse a database string into a [`CommandStatus`].
+    /// Unknown values default to [`CommandStatus::Running`].
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            _ => Self::Running,
+        })
+    }
+}
+
+impl AsRef<str> for CommandStatus {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::fmt::Display for CommandStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
@@ -38,6 +86,7 @@ impl ActiveModel {
         env: Option<HashMap<String, String>>,
         log_path: Option<String>,
         title: Option<String>,
+        server_id: Option<i64>,
     ) -> Result<Model, ModelError> {
         let now = chrono::Utc::now();
         let args_json = serde_json::to_value(&args).map_err(|e| {
@@ -58,11 +107,11 @@ impl ActiveModel {
             working_dir: ActiveValue::Set(working_dir),
             env: ActiveValue::Set(env_json),
             log_path: ActiveValue::Set(log_path),
-            status: ActiveValue::Set("running".to_string()),
+            status: ActiveValue::Set(CommandStatus::Running.as_str().to_string()),
             exit_code: ActiveValue::NotSet,
             started_at: ActiveValue::Set(now.naive_utc()),
             completed_at: ActiveValue::NotSet,
-            server_id: ActiveValue::NotSet,
+            server_id: ActiveValue::Set(server_id),
             log_removed: ActiveValue::Set(false),
             pid: ActiveValue::NotSet,
             title: ActiveValue::Set(title),
@@ -78,9 +127,9 @@ impl ActiveModel {
         &mut self,
         ctx: &AppContext,
         exit_code: Option<i32>,
-        status: String,
+        status: CommandStatus,
     ) -> Result<Model, ModelError> {
-        self.status = ActiveValue::Set(status);
+        self.status = ActiveValue::Set(status.as_str().to_string());
         self.exit_code = ActiveValue::Set(exit_code);
         self.completed_at = ActiveValue::Set(Some(chrono::Utc::now().naive_utc()));
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
@@ -111,7 +160,13 @@ impl Model {
     /// Check whether this run is still in "running" status.
     #[must_use]
     pub fn is_running(&self) -> bool {
-        self.status == "running"
+        self.status() == CommandStatus::Running
+    }
+
+    /// Returns the DB status as a typed [`CommandStatus`].
+    #[must_use]
+    pub fn status(&self) -> CommandStatus {
+        self.status.parse().unwrap_or(CommandStatus::Running)
     }
 
     /// Find a command run by its primary key.
@@ -137,13 +192,28 @@ impl Model {
             .map_err(ModelError::from)
     }
 
+    /// Find all runs currently in "running" status for a specific server.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database query fails.
+    pub async fn find_running_by_server(
+        ctx: &AppContext,
+        server_id: i64,
+    ) -> Result<Vec<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::Status.eq(CommandStatus::Running.as_str()))
+            .filter(Column::ServerId.eq(server_id))
+            .all(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
     /// Find all runs currently in "running" status.
     ///
     /// # Errors
     /// Returns a [`ModelError`] if the database operation fails.
     pub async fn find_running(ctx: &AppContext) -> Result<Vec<Self>, ModelError> {
         Entity::find()
-            .filter(Column::Status.eq("running"))
+            .filter(Column::Status.eq(CommandStatus::Running.as_str()))
             .all(&ctx.db)
             .await
             .map_err(ModelError::from)
@@ -159,7 +229,7 @@ impl Model {
     ) -> Result<Vec<Self>, ModelError> {
         let cutoff_naive = cutoff.naive_utc();
         Entity::find()
-            .filter(Column::Status.ne("running"))
+            .filter(Column::Status.ne(CommandStatus::Running.as_str()))
             .filter(Column::StartedAt.lt(cutoff_naive))
             .filter(Column::LogPath.is_not_null())
             .filter(Column::LogRemoved.eq(false))
@@ -174,7 +244,7 @@ impl Model {
     /// Returns a [`ModelError`] if the database operation fails.
     pub async fn find_with_log(ctx: &AppContext) -> Result<Vec<Self>, ModelError> {
         Entity::find()
-            .filter(Column::Status.ne("running"))
+            .filter(Column::Status.ne(CommandStatus::Running.as_str()))
             .filter(Column::LogPath.is_not_null())
             .filter(Column::LogRemoved.eq(false))
             .all(&ctx.db)

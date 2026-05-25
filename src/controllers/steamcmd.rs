@@ -77,6 +77,7 @@ pub async fn install(State(ctx): State<AppContext>) -> Result<impl IntoResponse>
         None,
         log_path_str,
         Some("SteamCMD Install".to_string()),
+        None,
     )
     .await
     .map_err(|e| loco_rs::Error::string(&format!("failed to create install record: {e}")))?;

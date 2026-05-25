@@ -14,7 +14,6 @@ pub struct Model {
     pub args: Json,
     pub working_dir: Option<String>,
     pub log_path: Option<String>,
-    pub title: Option<String>,
     pub env: Option<Json>,
     pub status: String,
     pub exit_code: Option<i32>,
@@ -23,6 +22,7 @@ pub struct Model {
     pub server_id: Option<i64>,
     pub log_removed: bool,
     pub pid: Option<i64>,
+    pub title: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

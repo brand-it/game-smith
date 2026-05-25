@@ -1,0 +1,8 @@
+output: stdout
+jobs:
+  pid_liveness:
+    run: "pid_liveness"
+    schedule: "every 30 seconds"
+    output: silent
+    run_on_start: true
+    tags: ["maintenance"]

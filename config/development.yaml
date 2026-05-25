@@ -60,8 +60,9 @@ workers:
 
 # Database Configuration
 database:
-  # Database connection URI
-  uri: {{ get_env(name="DATABASE_URL", default="sqlite://game-smith_development.sqlite?mode=rwc") }}
+  # URI is managed programmatically in src/app.rs via canonical_db_uri().
+  # DO NOT set here — doing so will cause tasks to use the wrong database.
+  uri: ""
   # When enabled, the sql query will be logged.
   enable_logging: false
   # Set the timeout duration when acquiring a connection.
