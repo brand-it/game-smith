@@ -2,6 +2,7 @@ use axum::routing::get;
 use loco_rs::controller::views::{engines::TeraView, ViewEngine};
 use loco_rs::prelude::*;
 
+use crate::data::command_runner::CommandRunner;
 use crate::models::command_runs::Model as CommandRunModel;
 /// GET /commands — list the most recent command runs.
 ///
@@ -28,7 +29,9 @@ pub async fn show(
     let run = CommandRunModel::find_by_id(&ctx, id)
         .await?
         .ok_or_else(|| loco_rs::Error::string("Command run not found"))?;
-    crate::views::commands::show(v, &run)
+    let runner = CommandRunner::new(&ctx);
+    let log_content = runner.tail(id, None).await.unwrap_or_default();
+    crate::views::commands::show(v, &run, &log_content)
 }
 
 /// Register the commands routes.

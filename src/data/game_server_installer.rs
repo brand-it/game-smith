@@ -22,6 +22,8 @@ pub enum GameServerError {
     Execute(ModelError),
     /// The game server record was not found.
     NotFound,
+    /// Failed to decrypt Steam credentials.
+    SteamCredentials(crate::data::encryption::EncryptionError),
 }
 
 impl std::fmt::Display for GameServerError {
@@ -32,6 +34,7 @@ impl std::fmt::Display for GameServerError {
             Self::WriteScript(e) => write!(f, "failed to write SteamCMD script: {e}"),
             Self::Execute(e) => write!(f, "failed to execute installation: {e}"),
             Self::NotFound => write!(f, "game server not found"),
+            Self::SteamCredentials(e) => write!(f, "failed to decrypt Steam credentials: {e}"),
         }
     }
 }
@@ -61,6 +64,8 @@ impl GameServerInstaller {
     /// * `platform` - Target platform (used for cross-platform installs).
     /// * `server_mod` - Optional mod name for HL1 games.
     /// * `beta_branch` - Optional beta branch name.
+    /// * `steam_username` - Optional Steam account username.
+    /// * `steam_password` - Optional Steam account password.
     ///
     /// # Returns
     /// A multi-line string containing the `SteamCMD` script.
@@ -71,11 +76,21 @@ impl GameServerInstaller {
         platform: &str,
         server_mod: Option<&str>,
         beta_branch: Option<&str>,
+        steam_username: Option<&str>,
+        steam_password: Option<&str>,
     ) -> String {
-        let mut lines = vec![
-            "@ShutdownOnFailedCommand 1".to_string(),
-            "@NoPromptForPassword 1".to_string(),
-        ];
+        // Determine auth mode
+        let has_credentials = steam_username
+            .filter(|u| !u.is_empty())
+            .zip(steam_password.filter(|p| !p.is_empty()))
+            .is_some();
+
+        let mut lines = vec!["@ShutdownOnFailedCommand 1".to_string()];
+
+        // @NoPromptForPassword is only needed for anonymous login
+        if !has_credentials {
+            lines.push("@NoPromptForPassword 1".to_string());
+        }
 
         // Cross-platform support: force platform type when target differs from host
         let host_platform = if cfg!(target_os = "windows") {
@@ -86,27 +101,33 @@ impl GameServerInstaller {
             "linux"
         };
         if platform != host_platform {
-            lines.push(format!("+@sSteamCmdForcePlatformType {platform}"));
+            lines.push(format!("@sSteamCmdForcePlatformType {platform}"));
         }
 
-        lines.push(format!("+force_install_dir {install_dir}"));
-        lines.push("+login anonymous".to_string());
+        lines.push(format!("force_install_dir {install_dir}"));
+
+        if let Some((username, password)) = steam_username
+            .filter(|u| !u.is_empty())
+            .zip(steam_password.filter(|p| !p.is_empty()))
+        {
+            lines.push(format!("login {username} {password}"));
+        } else {
+            lines.push("login anonymous".to_string());
+        }
 
         // Build app_update arguments
         let mut update_args = vec![app_id.to_string(), "validate".to_string()];
 
-        if let Some(mod_name) = server_mod {
+        if let Some(mod_name) = server_mod.filter(|s| !s.is_empty()) {
             update_args.push(format!("mod_{mod_name}"));
         }
 
-        if let Some(branch) = beta_branch {
+        if let Some(branch) = beta_branch.filter(|s| !s.is_empty()) {
             update_args.push("-beta".to_string());
             update_args.push(branch.to_string());
         }
-
-        lines.push(format!("+app_update {}", update_args.join(" ")));
-        lines.push("+quit".to_string());
-
+        lines.push(format!("app_update {}", update_args.join(" ")));
+        lines.push("quit".to_string());
         lines.join("\n")
     }
 
@@ -118,8 +139,48 @@ impl GameServerInstaller {
         platform: &str,
         server_mod: Option<&str>,
         beta_branch: Option<&str>,
+        steam_username: Option<&str>,
+        steam_password: Option<&str>,
     ) -> String {
-        Self::build_install_script(app_id, install_dir, platform, server_mod, beta_branch)
+        Self::build_install_script(
+            app_id,
+            install_dir,
+            platform,
+            server_mod,
+            beta_branch,
+            steam_username,
+            steam_password,
+        )
+    }
+    /// Load and decrypt Steam credentials from the database.
+    ///
+    /// Returns `(Some(username), Some(password))` if configured and decryption succeeds.
+    /// Falls back to `(None, None)` if no credentials are stored or decryption fails.
+    async fn load_steam_credentials(
+        &self,
+    ) -> Result<(Option<String>, Option<String>), GameServerError> {
+        // Try to load credentials from DB
+        let creds = crate::models::steam_credentials::Model::find(&self.ctx)
+            .await
+            .map_err(GameServerError::Execute)?;
+
+        if let Some(record) = creds {
+            // Load encryption key
+            let data_home = crate::resolve_data_home();
+            let dirs = crate::AppDirs::new(data_home);
+            let key_path = dirs.app_dir.join("secret.key");
+
+            let key = crate::data::encryption::EncryptionKey::load(&key_path)
+                .map_err(GameServerError::SteamCredentials)?;
+
+            let password = key
+                .decrypt(&record.nonce, &record.ciphertext)
+                .map_err(GameServerError::SteamCredentials)?;
+
+            Ok((Some(record.username), Some(password)))
+        } else {
+            Ok((None, None))
+        }
     }
 
     /// Install a game server by executing a `SteamCMD` script.
@@ -143,6 +204,9 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
+        // Load Steam credentials if configured
+        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+
         // Resolve SteamCMD binary path
         let data_home = crate::resolve_data_home();
         let dirs = crate::AppDirs::new(data_home);
@@ -156,8 +220,15 @@ impl GameServerInstaller {
         std::fs::create_dir_all(install_dir).map_err(GameServerError::CreateDir)?;
 
         // Build and write script
-        let script =
-            Self::build_install_script(app_id, install_dir, platform, server_mod, beta_branch);
+        let script = Self::build_install_script(
+            app_id,
+            install_dir,
+            platform,
+            server_mod,
+            beta_branch,
+            steam_username.as_deref(),
+            steam_password.as_deref(),
+        );
         let script_path = PathBuf::from(install_dir).join(format!("install_{app_id}.txt"));
         std::fs::write(&script_path, &script).map_err(GameServerError::WriteScript)?;
 
@@ -178,11 +249,11 @@ impl GameServerInstaller {
         let run = runner
             .execute(
                 binary_path,
-                vec![format!("@ScriptFile {script_path_str}")],
+                vec!["+runscript".to_string(), script_path_str],
                 Some(steamcmd.steamcmd_dir().to_string_lossy().to_string()),
                 None,
                 title,
-                None,
+                Some(i64::from(server.id)),
             )
             .await
             .map_err(GameServerError::Execute)?;
@@ -208,6 +279,9 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
+        // Load Steam credentials if configured
+        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+
         let data_home = crate::resolve_data_home();
         let dirs = crate::AppDirs::new(data_home);
         let steamcmd = crate::data::steamcmd::SteamCmd::new(&dirs);
@@ -216,8 +290,15 @@ impl GameServerInstaller {
             return Err(GameServerError::SteamCmdNotInstalled);
         }
 
-        let script =
-            Self::build_update_script(app_id, install_dir, platform, server_mod, beta_branch);
+        let script = Self::build_update_script(
+            app_id,
+            install_dir,
+            platform,
+            server_mod,
+            beta_branch,
+            steam_username.as_deref(),
+            steam_password.as_deref(),
+        );
         let script_path = PathBuf::from(install_dir).join(format!("update_{app_id}.txt"));
         std::fs::write(&script_path, &script).map_err(GameServerError::WriteScript)?;
 
@@ -235,11 +316,11 @@ impl GameServerInstaller {
         let run = runner
             .execute(
                 binary_path,
-                vec![format!("@ScriptFile {script_path_str}")],
+                vec!["+runscript".to_string(), script_path_str],
                 Some(steamcmd.steamcmd_dir().to_string_lossy().to_string()),
                 None,
                 title,
-                None,
+                Some(i64::from(server.id)),
             )
             .await
             .map_err(GameServerError::Execute)?;
@@ -421,13 +502,16 @@ mod tests {
             "linux",
             None,
             None,
+            None,
+            None,
         );
 
         assert!(script.contains("@ShutdownOnFailedCommand 1"));
-        assert!(script.contains("+force_install_dir /home/user/games/cs2"));
-        assert!(script.contains("+login anonymous"));
-        assert!(script.contains("+app_update 740 validate"));
-        assert!(script.contains("+quit"));
+        assert!(script.contains("@NoPromptForPassword 1"));
+        assert!(script.contains("force_install_dir /home/user/games/cs2"));
+        assert!(script.contains("login anonymous"));
+        assert!(script.contains("app_update 740 validate"));
+        assert!(script.contains("quit"));
     }
 
     #[test]
@@ -438,9 +522,11 @@ mod tests {
             "linux",
             Some("czero"),
             None,
+            None,
+            None,
         );
 
-        assert!(script.contains("+app_update 90 validate mod_czero"));
+        assert!(script.contains("app_update 90 validate mod_czero"));
     }
 
     #[test]
@@ -451,18 +537,40 @@ mod tests {
             "linux",
             None,
             Some("public"),
+            None,
+            None,
         );
 
-        assert!(script.contains("+app_update 252490 validate -beta public"));
+        assert!(script.contains("app_update 252490 validate -beta public"));
+    }
+
+    #[test]
+    fn test_build_install_script_with_steam_auth() {
+        let script = GameServerInstaller::build_install_script(
+            427520,
+            "/opt/factorio",
+            "linux",
+            None,
+            None,
+            Some("my_steam_user"),
+            Some("my_steam_pass"),
+        );
+
+        assert!(script.contains("@ShutdownOnFailedCommand 1"));
+        assert!(!script.contains("@NoPromptForPassword 1"));
+        assert!(script.contains("login my_steam_user my_steam_pass"));
+        assert!(!script.contains("login anonymous"));
+        assert!(script.contains("app_update 427520 validate"));
     }
 
     #[test]
     fn test_build_install_script_cross_platform() {
         #[cfg(not(target_os = "windows"))]
         {
-            let script =
-                GameServerInstaller::build_install_script(740, "/opt/cs2", "windows", None, None);
-            assert!(script.contains("+@sSteamCmdForcePlatformType windows"));
+            let script = GameServerInstaller::build_install_script(
+                740, "/opt/cs2", "windows", None, None, None, None,
+            );
+            assert!(script.contains("@sSteamCmdForcePlatformType windows"));
         }
 
         #[cfg(target_os = "windows")]
@@ -473,8 +581,10 @@ mod tests {
                 "linux",
                 None,
                 None,
+                None,
+                None,
             );
-            assert!(script.contains("+@sSteamCmdForcePlatformType linux"));
+            assert!(script.contains("@sSteamCmdForcePlatformType linux"));
         }
     }
 
@@ -489,5 +599,55 @@ mod tests {
     fn test_default_install_dir() {
         let dir = game_servers::default_install_dir("My Server");
         assert!(dir.contains("/game-smith/games/my-server"));
+    }
+
+    #[test]
+    fn test_build_install_script_empty_strings_treated_as_none() {
+        let script = GameServerInstaller::build_install_script(
+            740,
+            "/home/user/games/cs2",
+            "linux",
+            Some(""),
+            Some(""),
+            None,
+            None,
+        );
+
+        assert!(script.contains("app_update 740 validate"));
+        assert!(!script.contains("mod_"));
+        assert!(!script.contains("-beta"));
+        assert!(script.contains("login anonymous"));
+    }
+
+    #[test]
+    fn test_build_install_script_empty_mod_only() {
+        let script = GameServerInstaller::build_install_script(
+            740,
+            "/home/user/games/cs2",
+            "linux",
+            Some(""),
+            Some("beta"),
+            None,
+            None,
+        );
+
+        assert!(!script.contains("mod_"));
+        assert!(script.contains("-beta beta"));
+    }
+
+    #[test]
+    fn test_build_install_script_empty_steam_creds_treated_as_anonymous() {
+        let script = GameServerInstaller::build_install_script(
+            740,
+            "/opt/cs2",
+            "linux",
+            None,
+            None,
+            Some(""),
+            Some("password"),
+        );
+
+        assert!(script.contains("login anonymous"));
+        assert!(script.contains("@NoPromptForPassword 1"));
     }
 }

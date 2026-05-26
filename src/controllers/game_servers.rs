@@ -1,6 +1,6 @@
 use axum::extract::Form;
 use axum::response::Redirect;
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use loco_rs::controller::views::engines::TeraView;
 use loco_rs::prelude::*;
 use serde::Deserialize;
@@ -79,6 +79,10 @@ pub async fn create(
     // Compute install directory
     let install_dir = game_servers::default_install_dir(&name);
 
+    // Filter empty strings from optional fields
+    let server_mod = form.server_mod.filter(|s| !s.trim().is_empty());
+    let beta_branch = form.beta_branch.filter(|s| !s.trim().is_empty());
+
     // Create game server record
     let server = game_servers::ActiveModel::create(
         &ctx,
@@ -86,8 +90,8 @@ pub async fn create(
         name,
         install_dir,
         platform,
-        form.server_mod,
-        form.beta_branch,
+        server_mod,
+        beta_branch,
     )
     .await
     .map_err(|e| loco_rs::Error::string(&format!("failed to create game server: {e}")))?;
@@ -237,7 +241,7 @@ pub async fn update_boot_script(
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
 
-/// DELETE /servers/:id — delete a game server record.
+/// POST /servers/:id/delete — delete a game server record.
 ///
 /// Does not remove files from the install directory.
 ///
@@ -254,7 +258,13 @@ pub async fn delete_server(
     // Stop server if actually running
     if game_servers::is_alive(&ctx, &server).await {
         let installer = GameServerInstaller::new(&ctx);
-        let _ = installer.stop(&server).await;
+        match installer.stop(&server).await {
+            Ok(()) => (),
+            Err(e) => {
+                // Log the error but proceed with deletion anyway
+                tracing::error!(server_id = server.id, error = %e, "failed to stop server before deletion");
+            }
+        }
     }
 
     let installer = GameServerInstaller::new(&ctx);
@@ -284,5 +294,5 @@ pub fn routes() -> Routes {
         .add("/{id}/stop", post(stop_server))
         .add("/{id}/update", post(update_server))
         .add("/{id}/boot-script", post(update_boot_script))
-        .add("/{id}", delete(delete_server))
+        .add("/{id}/delete", post(delete_server))
 }

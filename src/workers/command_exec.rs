@@ -1,13 +1,17 @@
 use async_trait::async_trait;
+#[cfg(target_os = "linux")]
+use libc::openpty;
 use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::os::fd::FromRawFd;
 use tokio::process::Command;
 
 use crate::data::steamcmd::{set_shared_store, SteamCmdHealthStatus};
 use crate::models::command_runs::{CommandStatus, Model as CommandRunModel};
+use crate::models::game_servers::ServerStatus;
 
 pub struct CommandExecWorker {
     pub ctx: AppContext,
@@ -29,57 +33,31 @@ impl CommandExecWorker {
         Ok(model)
     }
 
-    /// Open the log file for writing (or /dev/null if no log path).
-    fn open_log_file(log_path: Option<&str>) -> Result<std::fs::File> {
-        let path = log_path.unwrap_or("/dev/null");
-        std::fs::File::create(path)
-            .map_err(|e| loco_rs::Error::string(&format!("failed to open log file: {e}")))
-    }
-
-    /// Build a tokio `Command` from the persisted run model.
-    fn build_command(
-        model: &CommandRunModel,
-        stdout_file: std::fs::File,
-        stderr_file: std::fs::File,
-    ) -> Command {
-        let cmd_args: Vec<String> = model
-            .args
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let mut cmd = Command::new(&model.command);
-        cmd.args(&cmd_args);
-        cmd.stdout(std::process::Stdio::from(stdout_file));
-        cmd.stderr(std::process::Stdio::from(stderr_file));
-
-        if let Some(dir) = &model.working_dir {
-            cmd.current_dir(dir);
-        }
-
-        if let Some(env_json) = &model.env {
-            if let Ok(variables) =
-                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
-            {
-                for (key, value) in variables {
-                    cmd.env(key, value);
-                }
-            }
-        }
-
-        cmd
-    }
-
     /// Mark a run as failed in the database (best-effort, fire-and-forget).
     async fn mark_spawn_failed(ctx: &AppContext, run_id: i32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
             let _ = active.finish(ctx, Some(-1), CommandStatus::Failed).await;
+        }
+    }
+
+    /// Handle spawn failure: update DB and shared health status.
+    async fn _log_spawn_failed(
+        ctx: &AppContext,
+        run_id: i32,
+        is_health_check: bool,
+        error_msg: &str,
+        kind: std::io::ErrorKind,
+    ) {
+        Self::mark_spawn_failed(ctx, run_id).await;
+        if is_health_check {
+            let status = if kind == std::io::ErrorKind::NotFound {
+                SteamCmdHealthStatus::NotInstalled
+            } else {
+                SteamCmdHealthStatus::Broken(error_msg.to_string())
+            };
+            set_shared_store(&ctx.shared_store);
+            ctx.shared_store.insert(status);
         }
     }
 
@@ -173,6 +151,81 @@ impl CommandExecWorker {
             .is_some_and(|arr| arr.len() == 1 && arr[0].as_str() == Some("+quit"));
         is_steamcmd && args_quit
     }
+
+    /// Returns true if this run is a `SteamCMD` install or update command.
+    ///
+    /// Identified by the command being a `steamcmd` binary and the argument
+    /// list containing `+runscript`.
+    fn is_install_update(model: &CommandRunModel) -> bool {
+        let is_steamcmd =
+            model.command.ends_with("steamcmd.sh") || model.command.ends_with("steamcmd.exe");
+        let has_runscript = model
+            .args
+            .as_array()
+            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("+runscript")));
+        is_steamcmd && has_runscript
+    }
+
+    /// After an install/update command completes, update the associated game
+    /// server's status so it doesn't stay stuck at "installing".
+    async fn maybe_update_server_status(&self, run_id: i32, final_status: CommandStatus) {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return;
+        };
+
+        // Only act on install/update commands
+        if !Self::is_install_update(&model) {
+            return;
+        }
+
+        let Some(server_id) = model.server_id else {
+            return;
+        };
+
+        let Ok(server_id_i32) = i32::try_from(server_id) else {
+            return;
+        };
+
+        let Ok(Some(server)) =
+            crate::models::game_servers::Model::find_by_id(&self.ctx, server_id_i32).await
+        else {
+            return;
+        };
+
+        let (new_status, last_error) = match final_status {
+            CommandStatus::Completed => (ServerStatus::Installed, None),
+            CommandStatus::Failed => {
+                // Try to extract the last meaningful error line from the log
+                let last_error = model
+                    .log_path
+                    .as_ref()
+                    .and_then(|path| std::fs::read_to_string(path).ok())
+                    .and_then(|content| {
+                        content
+                            .lines()
+                            .rev()
+                            .find(|line| !line.trim().is_empty())
+                            .map(String::from)
+                    })
+                    .or_else(|| Some("Installation failed".to_string()));
+                (ServerStatus::Error, last_error)
+            }
+            CommandStatus::Running => return,
+        };
+
+        let mut active: crate::models::game_servers::ActiveModel = server.into();
+        if let Err(e) = active
+            .update_status(&self.ctx, new_status, last_error)
+            .await
+        {
+            tracing::warn!(
+                server_id,
+                %new_status,
+                error = %e,
+                "Failed to update game server status after install"
+            );
+        }
+    }
 }
 
 /// Arguments for executing a command via [`CommandExecWorker`].
@@ -195,15 +248,64 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
             return Ok(());
         };
 
-        // 2. Open log file for stdout/stderr
-        let log_path = model.log_path.as_deref();
-        let stdout_file = Self::open_log_file(log_path)?;
-        let stderr_file = stdout_file
-            .try_clone()
-            .map_err(|e| loco_rs::Error::string(&format!("failed to clone log file: {e}")))?;
+        // 2. Create PTY so child's stdout is line-buffered (real-time output)
+        let mut master_fd: libc::c_int = 0;
+        let mut slave_fd: libc::c_int = 0;
+        if unsafe {
+            openpty(
+                &raw mut master_fd,
+                &raw mut slave_fd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } != 0
+        {
+            return Err(loco_rs::Error::string(&format!(
+                "failed to create pty: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
+        let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
+        // master_fd and slave_fd are now owned by their respective std::fs::File handles
 
-        // 3. Build the command
-        let mut cmd = Self::build_command(&model, stdout_file, stderr_file);
+        // 3. Build the command with PTY as stdout/stderr
+        let cmd_args: Vec<String> = model
+            .args
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut cmd = Command::new(&model.command);
+        cmd.args(&cmd_args);
+        cmd.stdout(std::process::Stdio::from(slave.try_clone().map_err(
+            |e| loco_rs::Error::string(&format!("failed to clone slave for stdout: {e}")),
+        )?));
+        cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
+            |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
+        )?));
+        // slave (original) is dropped here, closing the original slave fd in parent
+        cmd.kill_on_drop(true);
+
+        if let Some(dir) = &model.working_dir {
+            cmd.current_dir(dir);
+        }
+
+        if let Some(env_json) = &model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(key, value);
+                }
+            }
+        }
 
         // 4. Spawn the process
         let mut child = cmd.spawn().map_err(|e| {
@@ -212,18 +314,9 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
             let is_health_check = Self::is_health_check(&model);
             let error_msg = e.to_string();
             let kind = e.kind();
-            let error_msg_clone = error_msg.clone();
+            let error_for_log = error_msg.clone();
             tokio::spawn(async move {
-                Self::mark_spawn_failed(&ctx, rid).await;
-                if is_health_check {
-                    let status = if kind == std::io::ErrorKind::NotFound {
-                        SteamCmdHealthStatus::NotInstalled
-                    } else {
-                        SteamCmdHealthStatus::Broken(error_msg_clone)
-                    };
-                    set_shared_store(&ctx.shared_store);
-                    ctx.shared_store.insert(status);
-                }
+                Self::_log_spawn_failed(&ctx, rid, is_health_check, &error_for_log, kind).await;
             });
             loco_rs::Error::string(&format!("failed to spawn process: {error_msg}"))
         })?;
@@ -233,18 +326,36 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
             self.store_pid(run_id, pid).await;
         }
 
-        // 6. Wait for completion
+        // 6. Read PTY master into log file (if log path is configured)
+        let log_path = model.log_path.clone();
+        if let Some(log_path) = &log_path {
+            let log_file = std::fs::File::create(log_path)
+                .map_err(|e| loco_rs::Error::string(&format!("failed to create log file: {e}")))?;
+            let log_file = tokio::fs::File::from_std(log_file);
+            let master = tokio::fs::File::from_std(master);
+            let log_path_str = log_path.clone();
+            tokio::spawn(async move {
+                let mut master = tokio::io::BufReader::new(master);
+                let mut log_file = log_file;
+                if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
+                    tracing::warn!(%log_path_str, error = %e, "PTY reader failed");
+                }
+            });
+        }
+
+        // 7. Wait for completion
         let status = child
             .wait()
             .await
             .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
 
-        // 7. Determine and persist final status
+        // 8. Determine and persist final status
         let (final_status, exit_code) = Self::determine_status(status);
         self.update_final_status(run_id, exit_code, final_status)
             .await?;
         self.maybe_update_health_status(run_id, final_status, exit_code)
             .await;
+        self.maybe_update_server_status(run_id, final_status).await;
 
         Ok(())
     }

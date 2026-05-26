@@ -79,8 +79,7 @@
                 </button>
             </form>
             {% endif %}
-            <form action="/servers/{{ server.id }}" method="post" style="margin:0" onsubmit="return confirm('{{ t(key="servers-delete-confirm", lang="en-US") }}')">
-                <input type="hidden" name="_method" value="DELETE">
+            <form action="/servers/{{ server.id }}/delete" method="post" style="margin:0" onsubmit="return confirm('{{ t(key="servers-delete-confirm", lang="en-US") }}')">
                 <button type="submit" style="width:100%;padding:9px 16px;background:#f8fafc;color:#64748b;font-size:0.875rem;font-weight:500;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;text-align:left"
                     onmouseover="this.style.background='#fef2f2';this.style.color='#dc2626';this.style.borderColor='#fca5a5'" onmouseout="this.style.background='#f8fafc';this.style.color='#64748b';this.style.borderColor='#e2e8f0'">
                     {{ t(key="servers-delete", lang="en-US") }}

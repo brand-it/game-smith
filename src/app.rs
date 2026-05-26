@@ -126,6 +126,7 @@ impl Hooks for App {
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![
+            Box::new(initializers::secret_key::SecretKeyInitializer),
             Box::new(initializers::db_validator::DbValidator),
             Box::new(initializers::steamcmd::SteamCmdInstaller),
             Box::new(initializers::view_engine::ViewEngineInitializer),
@@ -138,6 +139,7 @@ impl Hooks for App {
             .add_route(controllers::commands::routes())
             .add_route(controllers::steamcmd::routes())
             .add_route(controllers::game_servers::routes())
+            .add_route(controllers::steam_config::routes())
             .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

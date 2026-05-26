@@ -3,6 +3,7 @@ nav-dashboard = Dashboard
 nav-servers = Spiele-Server
 nav-steamcmd = SteamCMD
 nav-commands = Befehle
+nav-steam-config = Steam-Anmeldedaten
 
 hello-world = Hallo Welt!
 greeting = Hallochen { $name }!
