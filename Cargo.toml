@@ -103,3 +103,9 @@ authors = ["brand-it <brandt@lareaus.com>"]
 [package.metadata.packager.deb]
 desktop-template = "game-smith.desktop"
 depends = ["libgtk-3-0", "libappindicator3-1"]
+
+[package.metadata.wix]
+upgrade-guid = "A8F3C7E1-9B2D-4E5F-8A1C-3D7E9F2B4C6A"
+path-guid = "B2E4D8F3-1C5A-4D7E-9B3F-6A8C2E4D7F9B"
+license = false
+eula = false
