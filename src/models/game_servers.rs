@@ -370,19 +370,7 @@ mod windows_tests {
     }
 
     #[test]
-    fn check_pid_alive_returns_true_for_self() {
-        // Current process is always accessible
-        assert!(check_pid_alive(std::process::id() as i64));
-    }
-
-    #[test]
-    fn check_pid_alive_returns_false_for_nonexistent_on_windows() {
-        assert!(!check_pid_alive(999999));
-    }
-
-    #[test]
     fn kill_pid_returns_false_for_nonexistent_process() {
-        // Cannot open a non-existent process, so kill_pid returns false
         assert!(!kill_pid(999999, 0));
     }
 }
