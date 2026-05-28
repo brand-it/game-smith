@@ -149,57 +149,40 @@ async fn servers_create_invalid_app_id() {
     .await;
 }
 
-/// Verify the checkbox deserializer treats unchecked form (single "false") as false.
+/// Verify CreateServerForm deserializes use_steam_login as false when absent from form.
 #[tokio::test]
 #[serial]
-async fn servers_create_checkbox_unchecked_deserializes_false() {
-    use game_smith::controllers::game_servers::deserialize_checkbox;
+async fn servers_create_checkbox_unchecked_defaults_false() {
+    use game_smith::controllers::game_servers::CreateServerForm;
 
-    #[derive(Debug, serde::Deserialize)]
-    struct CheckboxTest {
-        #[serde(deserialize_with = "deserialize_checkbox")]
-        value: bool,
-    }
-
-    // Single value "false" (unchecked: only hidden field submitted)
-    let json = serde_json::json!({"value": "false"});
-    let parsed: CheckboxTest = serde_json::from_value(json).expect("should parse single false");
-    assert!(!parsed.value);
+    // Unchecked checkbox sends nothing for use_steam_login
+    let data = "app_id=730&name=Test+Server";
+    let form: CreateServerForm =
+        serde_urlencoded::from_str(data).expect("should parse without use_steam_login");
+    assert!(!form.use_steam_login, "unchecked should default to false");
 }
 
-/// Verify the checkbox deserializer treats checked form (["false","true"]) as true.
+/// Verify CreateServerForm deserializes use_steam_login as true when checkbox checked.
 #[tokio::test]
 #[serial]
-async fn servers_create_checkbox_checked_deserializes_true() {
-    use game_smith::controllers::game_servers::deserialize_checkbox;
+async fn servers_create_checkbox_checked_parses_true() {
+    use game_smith::controllers::game_servers::CreateServerForm;
 
-    #[derive(Debug, serde::Deserialize)]
-    struct CheckboxTest {
-        #[serde(deserialize_with = "deserialize_checkbox")]
-        value: bool,
-    }
-
-    // Duplicate keys from hidden+checkbox become array: last value "true" wins
-    let json = serde_json::json!({"value": ["false", "true"]});
-    let parsed: CheckboxTest = serde_json::from_value(json).expect("should parse checked form");
-    assert!(parsed.value);
+    // Checked checkbox sends use_steam_login=true
+    let data = "app_id=730&name=Test+Server&use_steam_login=true";
+    let form: CreateServerForm =
+        serde_urlencoded::from_str(data).expect("should parse with use_steam_login=true");
+    assert!(form.use_steam_login, "checked should be true");
 }
 
-/// Verify the checkbox deserializer treats "on" as false (not "true").
+/// Verify CreateServerForm rejects non-true values for use_steam_login.
 #[tokio::test]
 #[serial]
-async fn servers_create_checkbox_on_value_treated_as_false() {
-    use game_smith::controllers::game_servers::deserialize_checkbox;
+async fn servers_create_checkbox_non_true_value_fails() {
+    use game_smith::controllers::game_servers::CreateServerForm;
 
-    #[derive(Debug, serde::Deserialize)]
-    struct CheckboxTest {
-        #[serde(deserialize_with = "deserialize_checkbox")]
-        value: bool,
-    }
-
-    // Legacy checkbox sends "on"; should be treated as false since it's not "true"
-    let json = serde_json::json!({"value": ["false", "on"]});
-    let parsed: CheckboxTest =
-        serde_json::from_value(json).expect("should parse but treat 'on' as false");
-    assert!(!parsed.value);
+    // A non-"true" value should fail deserialization since the field expects a bool
+    let data = "app_id=730&name=Test+Server&use_steam_login=on";
+    let result: Result<CreateServerForm, _> = serde_urlencoded::from_str(data);
+    assert!(result.is_err(), "non-true value should fail deserialization");
 }

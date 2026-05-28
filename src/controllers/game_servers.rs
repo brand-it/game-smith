@@ -12,40 +12,9 @@ use crate::models::game_servers::ServerStatus;
 use crate::models::steam_credentials;
 use crate::{resolve_data_home, AppDirs};
 
-/// Deserializes HTML checkbox form data where a hidden field + checkbox
-/// both submit with the same name. When checked: `key=false&key=true`.
-/// When unchecked: `key=false`. Takes the last value.
-///
-/// # Errors
-/// Returns `D::Error` if the deserialized value cannot be converted to a bool.
-pub fn deserialize_checkbox<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct CheckboxVisitor;
-    impl<'de> serde::de::Visitor<'de> for CheckboxVisitor {
-        type Value = bool;
-        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("a string or a sequence of strings")
-        }
-        fn visit_str<E>(self, v: &str) -> Result<bool, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(v == "true")
-        }
-        fn visit_seq<A>(self, mut seq: A) -> Result<bool, A::Error>
-        where
-            A: serde::de::SeqAccess<'de>,
-        {
-            let mut last = None;
-            while let Some(val) = seq.next_element::<String>()? {
-                last = Some(val);
-            }
-            Ok(last.as_deref() == Some("true"))
-        }
-    }
-    deserializer.deserialize_any(CheckboxVisitor)
+/// Default value for optional `use_steam_login` checkbox.
+const fn default_false() -> bool {
+    false
 }
 
 /// Form data for creating a new game server.
@@ -55,7 +24,7 @@ pub struct CreateServerForm {
     pub name: String,
     pub server_mod: Option<String>,
     pub beta_branch: Option<String>,
-    #[serde(deserialize_with = "deserialize_checkbox")]
+    #[serde(default = "default_false")]
     pub use_steam_login: bool,
     pub steam_username: Option<String>,
     pub steam_password: Option<String>,

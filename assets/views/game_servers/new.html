@@ -51,8 +51,6 @@
 
         <div style="margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <!-- Hidden field + checkbox pattern: unchecked sends "false", checked sends "true" -->
-                <input type="hidden" name="use_steam_login" value="false">
                 <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
                     onchange="document.getElementById('steam_creds').style.display=this.checked?'block':'none'"
                     style="width:16px;height:16px;accent-color:#2563eb">
