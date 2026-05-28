@@ -6,6 +6,7 @@ use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
 use tokio::process::Command;
 
@@ -226,51 +227,22 @@ impl CommandExecWorker {
             );
         }
     }
-}
-
-/// Arguments for executing a command via [`CommandExecWorker`].
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CommandExecWorkerArgs {
-    pub run_id: i32,
-}
-
-#[async_trait]
-impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
-    fn build(ctx: &AppContext) -> Self {
-        Self { ctx: ctx.clone() }
-    }
-
-    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
-        let CommandExecWorkerArgs { run_id } = args;
-
-        // 1. Validate run exists and is still active
-        let Ok(model) = self.fetch_and_validate(run_id).await else {
-            return Ok(());
-        };
-
-        // 2. Create PTY so child's stdout is line-buffered (real-time output)
-        let mut master_fd: libc::c_int = 0;
-        let mut slave_fd: libc::c_int = 0;
-        if unsafe {
-            openpty(
-                &raw mut master_fd,
-                &raw mut slave_fd,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            )
-        } != 0
-        {
-            return Err(loco_rs::Error::string(&format!(
-                "failed to create pty: {}",
-                std::io::Error::last_os_error()
-            )));
-        }
-        let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
-        let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
-        // master_fd and slave_fd are now owned by their respective std::fs::File handles
-
-        // 3. Build the command with PTY as stdout/stderr
+    /// Shared inner execution logic after platform-specific stdio setup.
+    ///
+    /// The `setup_stdio` closure configures stdout/stderr on the [`Command`]
+    /// and returns an optional reader handle (used by the PTY master on Linux,
+    /// or `None` on Windows where the child's stdout pipe is used directly).
+    async fn perform_inner<F>(
+        &self,
+        run_id: i32,
+        model: CommandRunModel,
+        setup_stdio: F,
+    ) -> Result<()>
+    where
+        F: FnOnce(&mut Command) -> std::result::Result<Option<std::fs::File>, loco_rs::Error>
+            + Send,
+    {
+        // 3. Build the command
         let cmd_args: Vec<String> = model
             .args
             .as_array()
@@ -284,13 +256,10 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
 
         let mut cmd = Command::new(&model.command);
         cmd.args(&cmd_args);
-        cmd.stdout(std::process::Stdio::from(slave.try_clone().map_err(
-            |e| loco_rs::Error::string(&format!("failed to clone slave for stdout: {e}")),
-        )?));
-        cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
-            |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
-        )?));
-        // slave (original) is dropped here, closing the original slave fd in parent
+
+        // Configure stdout/stderr (platform-specific)
+        let master_reader = setup_stdio(&mut cmd)?;
+
         cmd.kill_on_drop(true);
 
         if let Some(dir) = &model.working_dir {
@@ -326,21 +295,52 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
             self.store_pid(run_id, pid).await;
         }
 
-        // 6. Read PTY master into log file (if log path is configured)
-        let log_path = model.log_path.clone();
-        if let Some(log_path) = &log_path {
-            let log_file = std::fs::File::create(log_path)
-                .map_err(|e| loco_rs::Error::string(&format!("failed to create log file: {e}")))?;
-            let log_file = tokio::fs::File::from_std(log_file);
-            let master = tokio::fs::File::from_std(master);
-            let log_path_str = log_path.clone();
-            tokio::spawn(async move {
-                let mut master = tokio::io::BufReader::new(master);
-                let mut log_file = log_file;
-                if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
-                    tracing::warn!(%log_path_str, error = %e, "PTY reader failed");
+        // 6. Read output into log file
+        #[cfg(target_os = "linux")]
+        {
+            // PTY master reader
+            let log_path = model.log_path.clone();
+            if let Some(log_path) = &log_path {
+                let log_file = std::fs::File::create(log_path).map_err(|e| {
+                    loco_rs::Error::string(&format!("failed to create log file: {e}"))
+                })?;
+                let log_file = tokio::fs::File::from_std(log_file);
+                if let Some(master) = master_reader {
+                    let master = tokio::fs::File::from_std(master);
+                    let log_path_str = log_path.clone();
+                    tokio::spawn(async move {
+                        let mut master = tokio::io::BufReader::new(master);
+                        let mut log_file = log_file;
+                        if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
+                            tracing::warn!(%log_path_str, error = %e, "PTY reader failed");
+                        }
+                    });
                 }
-            });
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // Pipe child stdout/stderr to log file
+            let log_path = model.log_path.clone();
+            if let Some(log_path) = &log_path {
+                let log_file = std::fs::File::create(log_path).map_err(|e| {
+                    loco_rs::Error::string(&format!("failed to create log file: {e}"))
+                })?;
+                let log_file = tokio::fs::File::from_std(log_file);
+                let log_path_str = log_path.clone();
+                if let Some(stdout) = child.stdout.take() {
+                    let stdout = tokio::io::BufReader::new(stdout);
+                    tokio::spawn(async move {
+                        let mut log_file = log_file;
+                        if let Err(e) = tokio::io::copy_buf(stdout, &mut log_file).await {
+                            tracing::warn!(%log_path_str, error = %e, "stdout pipe reader failed");
+                        }
+                    });
+                }
+            }
+            // Discard stderr (already captured by kill_on_drop cleanup)
+            let _ = child.stderr.take();
         }
 
         // 7. Wait for completion
@@ -358,5 +358,83 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         self.maybe_update_server_status(run_id, final_status).await;
 
         Ok(())
+    }
+}
+
+/// Arguments for executing a command via [`CommandExecWorker`].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommandExecWorkerArgs {
+    pub run_id: i32,
+}
+
+#[async_trait]
+impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
+    fn build(ctx: &AppContext) -> Self {
+        Self { ctx: ctx.clone() }
+    }
+
+    /// Linux implementation: uses PTY for line-buffered real-time output.
+    #[cfg(target_os = "linux")]
+    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
+        let CommandExecWorkerArgs { run_id } = args;
+
+        // 1. Validate run exists and is still active
+        let Ok(model) = self.fetch_and_validate(run_id).await else {
+            return Ok(());
+        };
+
+        // 2. Create PTY so child's stdout is line-buffered (real-time output)
+        let mut master_fd: libc::c_int = 0;
+        let mut slave_fd: libc::c_int = 0;
+        if unsafe {
+            openpty(
+                &raw mut master_fd,
+                &raw mut slave_fd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } != 0
+        {
+            return Err(loco_rs::Error::string(&format!(
+                "failed to create pty: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
+        let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
+        // master_fd and slave_fd are now owned by their respective std::fs::File handles
+
+        // 3. Build the command with PTY as stdout/stderr
+        self.perform_inner(run_id, model, |cmd| {
+            cmd.stdout(std::process::Stdio::from(slave.try_clone().map_err(
+                |e| loco_rs::Error::string(&format!("failed to clone slave for stdout: {e}")),
+            )?));
+            cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
+                |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
+            )?));
+            // slave (original) is dropped here, closing the original slave fd in parent
+            Ok::<_, loco_rs::Error>(Some(master))
+        })
+        .await
+    }
+
+    /// Windows implementation: uses piped stdio.
+    #[cfg(target_os = "windows")]
+    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
+        let CommandExecWorkerArgs { run_id } = args;
+
+        // 1. Validate run exists and is still active
+        let Ok(model) = self.fetch_and_validate(run_id).await else {
+            return Ok(());
+        };
+
+        // Use piped stdio instead of PTY
+        self.perform_inner(run_id, model, |cmd| {
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+            Ok::<_, loco_rs::Error>(None)
+        })
+        .await
     }
 }

@@ -93,21 +93,55 @@ pub fn default_install_dir(name: &str) -> String {
     let slug = slugify(name);
     format!("{home}/game-smith/games/{slug}")
 }
+/// Cross-platform signal constant for termination.
+/// Resolves to `libc::SIGTERM` on Linux; `0` on Windows (ignored by `kill_pid`).
+#[cfg(target_os = "windows")]
+pub const TERM_SIGNAL: i32 = 0;
 
+#[cfg(target_os = "linux")]
+use libc;
+
+#[cfg(target_os = "linux")]
+pub const TERM_SIGNAL: libc::c_int = libc::SIGTERM;
 /// Check if a process is alive by sending signal 0.
 /// Returns `true` if the process exists and is accessible.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
 pub fn check_pid_alive(pid: i64) -> bool {
     let result = unsafe { libc::kill(pid as libc::c_int, 0) };
     result == 0
 }
-/// Send a signal to a process by PID.
-/// Returns the result of `libc::kill`.
+
+/// Check if a process is alive on Windows.
+/// Opens the process with `PROCESS_QUERY_INFORMATION` and checks if the
+/// handle is still valid.
+#[must_use]
+#[cfg(target_os = "windows")]
+pub fn check_pid_alive(pid: i64) -> bool {
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
+    unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, false, pid as u32).is_ok() }
+}
+
+/// Send a signal to a process by PID (Linux: `libc::kill`).
+/// Returns `Ok(())` on success, `Err` if the process couldn't be signaled.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
 pub fn kill_pid(pid: i64, signal: libc::c_int) -> libc::c_int {
     unsafe { libc::kill(pid as libc::c_int, signal) }
+}
+
+/// Terminate a process by PID on Windows using `TerminateProcess`.
+/// The `_signal` parameter is ignored on Windows (process is always terminated).
+#[must_use]
+#[cfg(target_os = "windows")]
+pub fn kill_pid(pid: i64, _signal: i32) -> bool {
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE};
+    let Ok(handle) = (unsafe { OpenProcess(PROCESS_TERMINATE, false, pid as u32) }) else {
+        return false;
+    };
+    unsafe { TerminateProcess(handle, 1).is_ok() }
 }
 
 /// Check whether this server process is actually alive.

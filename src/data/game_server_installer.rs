@@ -453,7 +453,10 @@ impl GameServerInstaller {
 
         for run in running_runs {
             if let Some(pid) = run.pid {
-                let _ = crate::models::game_servers::kill_pid(pid, libc::SIGTERM);
+                let _ = crate::models::game_servers::kill_pid(
+                    pid,
+                    crate::models::game_servers::TERM_SIGNAL,
+                );
                 info!(
                     server_id = server.id,
                     run_id = run.id,

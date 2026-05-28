@@ -4,6 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
+#[cfg(target_os = "linux")]
 use flate2::read::GzDecoder;
 use loco_rs::app::SharedStore;
 use tokio::process::Command;
@@ -331,12 +332,13 @@ impl SteamCmd {
         let bytes = tokio::fs::read(&temp_path)
             .await
             .map_err(SteamCmdError::Io)?;
-        let mut archive =
-            zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(SteamCmdError::Extract)?;
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
+            SteamCmdError::Extract(io::Error::new(io::ErrorKind::Other, e.to_string()))
+        })?;
 
-        archive
-            .extract(&self.steamcmd_dir)
-            .map_err(SteamCmdError::Extract)?;
+        archive.extract(&self.steamcmd_dir).map_err(|e| {
+            SteamCmdError::Extract(io::Error::new(io::ErrorKind::Other, e.to_string()))
+        })?;
 
         // Clean up temp file
         let _ = tokio::fs::remove_file(&temp_path).await;

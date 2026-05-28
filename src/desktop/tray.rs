@@ -99,9 +99,8 @@ impl Tray {
 
     #[cfg(target_os = "windows")]
     pub fn run_event_loop(self, tray: TrayIcon) -> ! {
-        use windows::Win32::Foundation::{HWND, MSG};
         use windows::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE,
+            DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
         };
 
         let rx_menu = MenuEvent::receiver().clone();
@@ -112,7 +111,7 @@ impl Tray {
             while let Ok(event) = rx_menu.try_recv() {
                 Self::dispatch(&event, &server_url);
             }
-            if unsafe { PeekMessageW(&mut msg, HWND::default(), 0, 0, PM_REMOVE).as_bool() } {
+            if unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() } {
                 unsafe { TranslateMessage(&msg) };
                 unsafe { DispatchMessageW(&msg) };
             } else {
