@@ -1,13 +1,22 @@
 //! Tray icon implementation.
 //!
-//! Encapsulates menu constants, icon creation, menu building, and
-//! platform-specific event loops. This module is an internal implementation
-//! detail of the desktop integration layer.
+//! Encapsulates menu constants, icon creation, menu building,
+//! and platform-specific event loops.
 
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem},
     Icon, TrayIcon,
 };
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
+
+#[cfg(target_os = "linux")]
+pub use linux::run_event_loop;
+#[cfg(target_os = "windows")]
+pub use windows::run_event_loop;
 
 /// Menu item identifier for the "Open Dashboard" action.
 const MENU_OPEN: &str = "open";
@@ -17,7 +26,6 @@ const MENU_QUIT: &str = "quit";
 /// Tray icon state and configuration.
 ///
 /// Owns the tooltip text and server URL needed for menu event handling.
-/// Provides methods to build the icon, menu, and run the event loop.
 pub struct Tray {
     server_url: String,
 }
@@ -82,58 +90,24 @@ impl Tray {
     /// dispatched to [`Self::dispatch`].
     ///
     /// This method diverges and never returns.
-    #[cfg(target_os = "linux")]
     pub fn run_event_loop(self, tray: TrayIcon) -> ! {
-        let rx_menu = MenuEvent::receiver().clone();
-        let server_url = self.server_url;
-        glib::idle_add(move || {
-            while let Ok(event) = rx_menu.try_recv() {
-                Self::dispatch(&event, &server_url);
-            }
-            glib::ControlFlow::Continue
-        });
-        let _keep_alive = tray;
-        gtk::main();
-        unreachable!("gtk::main() should not return")
+        run_event_loop(self.server_url, tray)
     }
+}
 
-    #[cfg(target_os = "windows")]
-    pub fn run_event_loop(self, tray: TrayIcon) -> ! {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
-        };
+/// Dispatch a menu event using the given server URL.
+///
+/// Used inside event-loop closures where `self` has been moved.
+fn dispatch_menu(event: &MenuEvent, server_url: &str) {
+    use std::process;
 
-        let rx_menu = MenuEvent::receiver().clone();
-        let server_url = self.server_url;
-        let _keep_alive = tray;
-        let mut msg = unsafe { std::mem::zeroed::<MSG>() };
-        loop {
-            while let Ok(event) = rx_menu.try_recv() {
-                Self::dispatch(&event, &server_url);
-            }
-            if unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() } {
-                let _ = unsafe { TranslateMessage(&msg) };
-                unsafe { DispatchMessageW(&msg) };
-            } else {
-                std::thread::sleep(std::time::Duration::from_millis(16));
-            }
+    match event.id.as_ref() {
+        MENU_OPEN => {
+            let _ = open::that(server_url);
         }
-    }
-
-    /// Dispatch a menu event using the given server URL.
-    ///
-    /// Used inside event-loop closures where `self` has been moved.
-    fn dispatch(event: &MenuEvent, server_url: &str) {
-        use std::process;
-
-        match event.id.as_ref() {
-            MENU_OPEN => {
-                let _ = open::that(server_url);
-            }
-            MENU_QUIT => {
-                process::exit(0);
-            }
-            _ => {}
+        MENU_QUIT => {
+            process::exit(0);
         }
+        _ => {}
     }
 }
