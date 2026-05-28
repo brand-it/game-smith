@@ -125,8 +125,47 @@
                     </Directory>
                 </Directory>
             </Directory>
-        </Directory>
 
+            <Directory Id="DesktopFolder" Name="Desktop">
+                <Component Id="DesktopShortcut" Guid="*">
+                    <Shortcut
+                        Id="DesktopShortcut"
+                        Name="Game Smith"
+                        Target="[Bin]game-smith.exe"
+                        WorkingDirectory="APPLICATIONFOLDER"
+                        Icon="ProductICO"/>
+                    <RemoveFolder Id="RemoveDesktop" On="uninstall"/>
+                    <RegistryValue
+                        Root="HKCU"
+                        Key="Software\brand-it\Game Smith"
+                        Name="desktop_shortcut"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes"/>
+                </Component>
+            </Directory>
+
+            <Directory Id="ProgramMenuFolder" Name="Programs">
+                <Directory Id="ApplicationProgramsFolder" Name="Game Smith">
+                    <Component Id="StartMenuShortcut" Guid="*">
+                        <Shortcut
+                            Id="StartMenuShortcut"
+                            Name="Game Smith"
+                            Target="[Bin]game-smith.exe"
+                            WorkingDirectory="APPLICATIONFOLDER"
+                            Icon="ProductICO"/>
+                        <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall"/>
+                        <RegistryValue
+                            Root="HKCU"
+                            Key="Software\brand-it\Game Smith"
+                            Name="start_menu_shortcut"
+                            Type="integer"
+                            Value="1"
+                            KeyPath="yes"/>
+                    </Component>
+                </Directory>
+            </Directory>
+            </Directory>
         <Feature
             Id='Binaries'
             Title='Application'
@@ -141,6 +180,8 @@
               Uncomment the following `ComponentRef` tag to add the license
               sidecar file to the installer.
             -->
+            <ComponentRef Id='DesktopShortcut'/>
+            <ComponentRef Id='StartMenuShortcut'/>
             <!--<ComponentRef Id='License'/>-->
 
             <ComponentRef Id='binary0'/>
@@ -164,8 +205,8 @@
           The product icon is the graphic that appears in the Add/Remove
           Programs control panel for the application.
         -->
-        <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
-        <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
+        <Icon Id='ProductICO' SourceFile='assets/icons/game-smith.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
 
         
         <Property Id='ARPHELPLINK' Value='https://github.com/brand-it/game-smith'/>
