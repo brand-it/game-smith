@@ -113,7 +113,7 @@ impl ActiveModel {
             completed_at: ActiveValue::NotSet,
             server_id: ActiveValue::Set(server_id),
             log_removed: ActiveValue::Set(false),
-            pid: ActiveValue::NotSet,
+            pid: ActiveValue::Set(Some(i64::from(std::process::id()))),
             title: ActiveValue::Set(title),
         };
         record.insert(&ctx.db).await.map_err(ModelError::from)

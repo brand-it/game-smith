@@ -30,6 +30,19 @@ impl Task for PidLiveness {
 
         for run in running {
             let Some(pid) = run.pid else {
+                info!(run_id = run.id, "command run has no PID, marking as failed");
+                let mut active: command_runs::ActiveModel = run.into();
+                match active
+                    .finish(app_context, None, CommandStatus::Failed)
+                    .await
+                {
+                    Ok(_) => info!(
+                        run_id = active.id.unwrap(),
+                        "marked null-pid command run as failed"
+                    ),
+                    Err(e) => info!(run_id = active.id.unwrap(), error = %e,
+                        "failed to update null-pid command run status to failed"),
+                }
                 continue;
             };
 

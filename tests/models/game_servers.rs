@@ -27,6 +27,7 @@ async fn test_create_game_server() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -55,6 +56,7 @@ async fn test_find_by_id() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -95,6 +97,7 @@ async fn test_update_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -129,6 +132,7 @@ async fn test_list() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -155,6 +159,7 @@ async fn test_app_id_u32() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -192,6 +197,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -209,6 +215,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -226,6 +233,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -260,6 +268,7 @@ async fn test_find_running_returns_zombie_servers() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");

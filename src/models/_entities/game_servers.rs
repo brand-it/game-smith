@@ -27,6 +27,7 @@ pub struct Model {
     pub last_error: Option<String>,
     pub server_mod: Option<String>,
     pub beta_branch: Option<String>,
+    pub use_steam_login: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

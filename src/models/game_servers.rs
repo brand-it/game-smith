@@ -152,6 +152,7 @@ impl ActiveModel {
     /// * `platform` - Target platform ("linux", "windows", "macos").
     /// * `server_mod` - Optional mod name for HL1 games.
     /// * `beta_branch` - Optional beta branch name for `app_update`.
+    /// * `use_steam_login` - When `true`, use Steam credentials; when `false`, use anonymous login.
     ///
     /// # Errors
     /// Returns a [`ModelError`] if the database operation fails.
@@ -164,6 +165,7 @@ impl ActiveModel {
         platform: String,
         server_mod: Option<String>,
         beta_branch: Option<String>,
+        use_steam_login: bool,
     ) -> Result<Model, ModelError> {
         let now = chrono::Utc::now();
         let record = Self {
@@ -187,6 +189,7 @@ impl ActiveModel {
             last_error: ActiveValue::NotSet,
             server_mod: ActiveValue::Set(server_mod),
             beta_branch: ActiveValue::Set(beta_branch),
+            use_steam_login: ActiveValue::Set(use_steam_login),
         };
         record.insert(&ctx.db).await.map_err(ModelError::from)
     }

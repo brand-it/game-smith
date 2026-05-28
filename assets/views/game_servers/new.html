@@ -9,7 +9,7 @@
 </div>
 
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:32px;max-width:560px">
-    <form action="/servers" method="post">
+    <form action="/servers" method="post" id="server_form">
         <div style="margin-bottom:20px">
             <label for="app_id" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-app-id", lang="en-US") }}</label>
             <input type="text" name="app_id" id="app_id" required placeholder="730"
@@ -47,6 +47,36 @@
                 style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
                 onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
                 onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+        </div>
+
+        <div style="margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <!-- Hidden field + checkbox pattern: unchecked sends "false", checked sends "true" -->
+                <input type="hidden" name="use_steam_login" value="false">
+                <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
+                    onchange="document.getElementById('steam_creds').style.display=this.checked?'block':'none'"
+                    style="width:16px;height:16px;accent-color:#2563eb">
+                <span style="font-size:0.875rem;font-weight:500;color:#374151">{{ t(key="servers-form-use-steam-account", lang="en-US") }}</span>
+            </label>
+            <p style="margin:6px 0 0 24px;font-size:0.75rem;color:#64748b">{{ t(key="servers-form-use-steam-account-help", lang="en-US") }}</p>
+        </div>
+
+        <div id="steam_creds" style="display:none;margin-bottom:20px;padding:16px;background:#f0f9ff;border-radius:6px;border:1px solid #bfdbfe">
+            <div style="margin-bottom:12px">
+                <label for="steam_username" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-steam-username", lang="en-US") }}</label>
+                <input type="text" name="steam_username" id="steam_username" placeholder="{{ t(key="servers-form-steam-username-placeholder", lang="en-US") }}"
+                    value="{{ steam_username | default(value="") }}"
+                    style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                    onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                    onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+            </div>
+            <div>
+                <label for="steam_password" style="display:block;font-size:0.875rem;font-weight:500;color:#374151;margin-bottom:6px">{{ t(key="servers-form-steam-password", lang="en-US") }}</label>
+                <input type="password" name="steam_password" id="steam_password" placeholder="{{ t(key="servers-form-steam-password-placeholder", lang="en-US") }}"
+                    style="display:block;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.875rem;color:#0f172a;outline:none"
+                    onfocus="this.style.borderColor='#2563eb';this.style.boxShadow='0 0 0 3px #dbeafe'"
+                    onblur="this.style.borderColor='#d1d5db';this.style.boxShadow='none'">
+            </div>
         </div>
 
         <div style="display:flex;align-items:center;gap:12px">

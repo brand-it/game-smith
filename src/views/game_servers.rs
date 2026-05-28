@@ -58,8 +58,12 @@ pub async fn list(
 /// # Errors
 /// Returns an error if template rendering fails.
 #[allow(clippy::needless_pass_by_value)]
-pub fn new_form(v: impl ViewRenderer) -> Result<impl IntoResponse> {
-    format::render().view(&v, "game_servers/new.html", data!({}))
+pub fn new_form(v: impl ViewRenderer, steam_username: Option<&str>) -> Result<impl IntoResponse> {
+    format::render().view(
+        &v,
+        "game_servers/new.html",
+        data!({ "steam_username": steam_username }),
+    )
 }
 
 /// Render a single game server detail page.

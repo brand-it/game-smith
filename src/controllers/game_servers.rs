@@ -1,13 +1,52 @@
+use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::extract::Form;
 use axum::response::Redirect;
 use axum::routing::{get, post};
-use loco_rs::controller::views::engines::TeraView;
 use loco_rs::prelude::*;
 use serde::Deserialize;
 
+use crate::data::encryption::EncryptionKey;
 use crate::data::game_server_installer::GameServerInstaller;
 use crate::models::game_servers;
 use crate::models::game_servers::ServerStatus;
+use crate::models::steam_credentials;
+use crate::{resolve_data_home, AppDirs};
+
+/// Deserializes HTML checkbox form data where a hidden field + checkbox
+/// both submit with the same name. When checked: `key=false&key=true`.
+/// When unchecked: `key=false`. Takes the last value.
+///
+/// # Errors
+/// Returns `D::Error` if the deserialized value cannot be converted to a bool.
+pub fn deserialize_checkbox<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct CheckboxVisitor;
+    impl<'de> serde::de::Visitor<'de> for CheckboxVisitor {
+        type Value = bool;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a string or a sequence of strings")
+        }
+        fn visit_str<E>(self, v: &str) -> Result<bool, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(v == "true")
+        }
+        fn visit_seq<A>(self, mut seq: A) -> Result<bool, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut last = None;
+            while let Some(val) = seq.next_element::<String>()? {
+                last = Some(val);
+            }
+            Ok(last.as_deref() == Some("true"))
+        }
+    }
+    deserializer.deserialize_any(CheckboxVisitor)
+}
 
 /// Form data for creating a new game server.
 #[derive(Debug, Deserialize)]
@@ -16,6 +55,10 @@ pub struct CreateServerForm {
     pub name: String,
     pub server_mod: Option<String>,
     pub beta_branch: Option<String>,
+    #[serde(deserialize_with = "deserialize_checkbox")]
+    pub use_steam_login: bool,
+    pub steam_username: Option<String>,
+    pub steam_password: Option<String>,
 }
 
 /// GET /servers — list all game servers.
@@ -24,7 +67,7 @@ pub struct CreateServerForm {
 /// Returns a [`loco_rs::Error`] if the database query fails or rendering fails.
 pub async fn list(
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let servers = game_servers::Model::list(&ctx)
         .await
@@ -36,8 +79,16 @@ pub async fn list(
 ///
 /// # Errors
 /// Returns a [`loco_rs::Error`] if rendering fails.
-pub async fn new_form(ViewEngine(v): ViewEngine<TeraView>) -> Result<impl IntoResponse> {
-    crate::views::game_servers::new_form(v)
+pub async fn new_form(
+    State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
+) -> Result<impl IntoResponse> {
+    let username = steam_credentials::Model::find(&ctx)
+        .await
+        .ok()
+        .flatten()
+        .map(|record| record.username);
+    crate::views::game_servers::new_form(v, username.as_deref())
 }
 
 /// POST /servers — create a new game server and start installation.
@@ -83,6 +134,27 @@ pub async fn create(
     let server_mod = form.server_mod.filter(|s| !s.trim().is_empty());
     let beta_branch = form.beta_branch.filter(|s| !s.trim().is_empty());
 
+    // Save Steam credentials if provided
+    let use_steam_login = form.use_steam_login;
+    let steam_username = form
+        .steam_username
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string());
+    let steam_password = form.steam_password.filter(|s| !s.trim().is_empty());
+
+    if use_steam_login {
+        if let (Some(ref username), Some(ref password)) = (steam_username, steam_password) {
+            if !username.is_empty() && !password.is_empty() {
+                match save_steam_credentials(&ctx, username, password).await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to save Steam credentials");
+                    }
+                }
+            }
+        }
+    }
+
     // Create game server record
     let server = game_servers::ActiveModel::create(
         &ctx,
@@ -92,6 +164,7 @@ pub async fn create(
         platform,
         server_mod,
         beta_branch,
+        use_steam_login,
     )
     .await
     .map_err(|e| loco_rs::Error::string(&format!("failed to create game server: {e}")))?;
@@ -122,7 +195,7 @@ pub async fn create(
 pub async fn show(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
@@ -295,4 +368,36 @@ pub fn routes() -> Routes {
         .add("/{id}/update", post(update_server))
         .add("/{id}/boot-script", post(update_boot_script))
         .add("/{id}/delete", post(delete_server))
+}
+
+/// Save or update Steam credentials in the database.
+///
+/// Encrypts the password and stores it alongside the username.
+async fn save_steam_credentials(
+    ctx: &AppContext,
+    username: &str,
+    password: &str,
+) -> Result<(), loco_rs::Error> {
+    // Load encryption key
+    let data_home = resolve_data_home();
+    let dirs = AppDirs::new(data_home);
+    let key_path = dirs.app_dir.join("secret.key");
+
+    let key = EncryptionKey::load(&key_path)
+        .map_err(|e| loco_rs::Error::string(&format!("failed to load encryption key: {e}")))?;
+
+    // Encrypt password
+    let (nonce, ciphertext) = key
+        .encrypt(password)
+        .map_err(|e| loco_rs::Error::string(&format!("failed to encrypt password: {e}")))?;
+
+    // Store credentials
+    let _record =
+        steam_credentials::ActiveModel::store(ctx, username.to_string(), nonce, ciphertext)
+            .await
+            .map_err(|e| {
+                loco_rs::Error::string(&format!("failed to save steam credentials: {e}"))
+            })?;
+
+    Ok(())
 }

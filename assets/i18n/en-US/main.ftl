@@ -90,6 +90,15 @@ servers-form-mod-help = Mod name for Half-Life 1 games (e.g., czero, dmc, tfc).
 servers-form-beta = Beta Branch (optional)
 servers-form-beta-placeholder = public
 servers-form-install = Install Server
+servers-form-use-steam-account = Use Steam Account Login
+servers-form-use-steam-account-help = When checked, SteamCMD will log in with your Steam credentials. Unchecked uses anonymous login.
+servers-form-steam-username = Steam Username
+servers-form-steam-username-placeholder = Your Steam account username
+servers-form-steam-password = Steam Password
+servers-form-steam-password-placeholder = Your Steam account password
+servers-table-login-mode = Login
+servers-login-anonymous = Anonymous
+servers-login-steam = Steam Account
 
 # Additional status badges
 status-pending = Pending

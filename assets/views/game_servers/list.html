@@ -20,8 +20,8 @@
                 <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-app-id", lang="en-US") }}</th>
                 <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-platform", lang="en-US") }}</th>
                 <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-status", lang="en-US") }}</th>
+                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-login-mode", lang="en-US") }}</th>
                 <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-install-dir", lang="en-US") }}</th>
-            </tr>
         </thead>
         <tbody>
             {% for server in servers %}
@@ -32,6 +32,7 @@
                 <td style="padding:12px 16px;font-family:monospace;color:#475569">{{ server.app_id }}</td>
                 <td style="padding:12px 16px;color:#475569">{{ server.platform }}</td>
                 <td style="padding:12px 16px">{{ macros::status_badge(status=server.status) }}</td>
+                <td style="padding:12px 16px;color:#475569">{% if server.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</td>
                 <td style="padding:12px 16px;font-family:monospace;font-size:0.75rem;color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ server.install_dir }}">{{ server.install_dir }}</td>
             </tr>
             {% endfor %}

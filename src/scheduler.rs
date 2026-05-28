@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use loco_rs::app::AppContext;
 use loco_rs::task::{Task as LocoTask, Vars};
 use serde::Deserialize;
+
+const SCHEDULER_CONFIG: &str = include_str!("../config/scheduler.yaml");
 
 // ---------------------------------------------------------------------------
 // Config (mirrors config/scheduler.yaml)
@@ -72,43 +73,24 @@ impl TaskRegistry {
 
 /// Start the in-process scheduler.
 ///
-/// Reads `config/scheduler.yaml` from the current working directory, registers
+/// Reads the embedded `scheduler.yaml` config, registers
 /// the provided tasks, and spawns a tokio task per job. Each task runs its
 /// `Task::run(&ctx, &vars)` method directly — no subprocess spawning.
 ///
-/// Returns `Ok(())` even when the config file is missing (treated as "no jobs").
+/// Returns `Ok(())` even when the config is malformed (scheduler disabled).
 ///
 /// # Errors
 ///
 /// Returns an error only if the scheduler handles fail unexpectedly. Individual
 /// job failures are logged but do not propagate as errors.
 pub async fn run_scheduler(ctx: &AppContext) -> loco_rs::Result<()> {
-    let config_path = PathBuf::from("config/scheduler.yaml");
-
-    let config = match std::fs::read_to_string(&config_path) {
-        Ok(contents) => match serde_yaml::from_str::<SchedulerConfig>(&contents) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!(
-                    path = %config_path.display(),
-                    error = %e,
-                    "failed to parse scheduler config, scheduler disabled"
-                );
-                return Ok(());
-            }
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            tracing::info!(
-                path = %config_path.display(),
-                "scheduler config not found, scheduler disabled"
-            );
-            return Ok(());
-        }
+    let config = match serde_yaml::from_str::<SchedulerConfig>(SCHEDULER_CONFIG) {
+        Ok(c) => c,
         Err(e) => {
             tracing::error!(
-                path = %config_path.display(),
+                config = "embedded scheduler.yaml",
                 error = %e,
-                "failed to read scheduler config, scheduler disabled"
+                "failed to parse scheduler config, scheduler disabled"
             );
             return Ok(());
         }

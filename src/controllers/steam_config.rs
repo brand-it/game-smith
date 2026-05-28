@@ -3,9 +3,9 @@
 //! Provides a web form for entering Steam username and password.
 //! The password is encrypted before storage.
 
+use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::extract::Form;
 use axum::routing::{get, post};
-use loco_rs::controller::views::engines::TeraView;
 use loco_rs::prelude::*;
 use serde::Deserialize;
 
@@ -28,7 +28,7 @@ pub struct SteamConfigForm {
 /// Returns a [`loco_rs::Error`] if rendering fails.
 pub async fn show_config(
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let username = steam_credentials::Model::find(&ctx)
         .await
@@ -49,7 +49,7 @@ pub async fn show_config(
 /// Returns a [`loco_rs::Error`] if encryption fails or the database operation fails.
 pub async fn save_config(
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
     Form(form): Form<SteamConfigForm>,
 ) -> Result<impl IntoResponse> {
     let username = form.steam_username.trim().to_string();

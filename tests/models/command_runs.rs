@@ -35,7 +35,7 @@ async fn test_create_run() {
     assert_eq!(model.command, "echo");
     assert!(model.log_path.is_some());
     assert!(model.log_path.as_ref().unwrap().ends_with("/test.log"));
-    assert!(model.pid.is_none());
+    assert_eq!(model.pid, Some(i64::from(std::process::id())));
 
     let found = CommandRunModel::find_by_id(&boot.app_context, model.id)
         .await

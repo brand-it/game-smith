@@ -204,8 +204,12 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
-        // Load Steam credentials if configured
-        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+        // Load Steam credentials only if server is configured to use Steam login
+        let (steam_username, steam_password) = if server.use_steam_login {
+            self.load_steam_credentials().await?
+        } else {
+            (None, None)
+        };
 
         // Resolve SteamCMD binary path
         let data_home = crate::resolve_data_home();
@@ -279,8 +283,12 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
-        // Load Steam credentials if configured
-        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+        // Load Steam credentials only if server is configured to use Steam login
+        let (steam_username, steam_password) = if server.use_steam_login {
+            self.load_steam_credentials().await?
+        } else {
+            (None, None)
+        };
 
         let data_home = crate::resolve_data_home();
         let dirs = crate::AppDirs::new(data_home);

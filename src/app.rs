@@ -71,22 +71,7 @@ impl Hooks for App {
                 binding: "127.0.0.1".to_string(),
                 host: "http://127.0.0.1".to_string(),
                 ident: None,
-                middlewares: loco_rs::controller::middleware::Config {
-                    static_assets: Some(
-                        loco_rs::controller::middleware::static_assets::StaticAssets {
-                            enable: true,
-                            must_exist: true,
-                            folder: loco_rs::controller::middleware::static_assets::FolderConfig {
-                                uri: "/static".to_string(),
-                                path: std::path::PathBuf::from("assets/static"),
-                            },
-                            fallback: std::path::PathBuf::from("assets/static/404.html"),
-                            precompressed: false,
-                            cache_control: None,
-                        },
-                    ),
-                    ..Default::default()
-                },
+                middlewares: loco_rs::controller::middleware::Config::default(),
             },
             database: loco_rs::config::Database {
                 uri: super::canonical_db_uri(),
@@ -129,7 +114,8 @@ impl Hooks for App {
             Box::new(initializers::secret_key::SecretKeyInitializer),
             Box::new(initializers::db_validator::DbValidator),
             Box::new(initializers::steamcmd::SteamCmdInstaller),
-            Box::new(initializers::view_engine::ViewEngineInitializer),
+            Box::new(initializers::embedded_i18n::EmbeddedI18n),
+            Box::new(initializers::embedded_static::EmbeddedStatic),
             Box::new(initializers::command_log_socket::CommandLogInitializer),
         ])
     }
