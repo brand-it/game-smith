@@ -19,11 +19,6 @@ jobs:
             install-cmd: "sudo apt-get update && sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb"
             test-cmd: xvfb-run cargo test --all-features --all
             artifact-name: game-smith-ubuntu
-          - os: fedora-latest
-            pkg-manager: dnf
-            install-cmd: "sudo dnf install -y gtk3-devel libappindicator-gtk3-devel xdotool"
-            test-cmd: xvfb-run cargo test --all-features --all
-            artifact-name: game-smith-fedora
           - os: windows-latest
             pkg-manager: ""
             install-cmd: ""

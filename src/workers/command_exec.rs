@@ -330,10 +330,10 @@ impl CommandExecWorker {
                 let log_file = tokio::fs::File::from_std(log_file);
                 let log_path_str = log_path.clone();
                 if let Some(stdout) = child.stdout.take() {
-                    let stdout = tokio::io::BufReader::new(stdout);
+                    let mut stdout = tokio::io::BufReader::new(stdout);
                     tokio::spawn(async move {
                         let mut log_file = log_file;
-                        if let Err(e) = tokio::io::copy_buf(stdout, &mut log_file).await {
+                        if let Err(e) = tokio::io::copy_buf(&mut stdout, &mut log_file).await {
                             tracing::warn!(%log_path_str, error = %e, "stdout pipe reader failed");
                         }
                     });

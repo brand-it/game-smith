@@ -137,7 +137,7 @@ pub fn kill_pid(pid: i64, signal: libc::c_int) -> libc::c_int {
 #[must_use]
 #[cfg(target_os = "windows")]
 pub fn kill_pid(pid: i64, _signal: i32) -> bool {
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE};
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
     let Ok(handle) = (unsafe { OpenProcess(PROCESS_TERMINATE, false, pid as u32) }) else {
         return false;
     };
@@ -338,3 +338,51 @@ impl Model {
 }
 
 impl Entity {}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn term_signal_is_sigterm() {
+        assert_eq!(TERM_SIGNAL, libc::SIGTERM);
+    }
+
+    #[test]
+    fn check_pid_alive_returns_true_for_self() {
+        let pid = std::process::id() as i64;
+        assert!(check_pid_alive(pid));
+    }
+
+    #[test]
+    fn check_pid_alive_returns_false_for_nonexistent() {
+        assert!(!check_pid_alive(999999));
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn term_signal_is_zero_on_windows() {
+        assert_eq!(TERM_SIGNAL, 0);
+    }
+
+    #[test]
+    fn check_pid_alive_returns_true_for_system_process() {
+        // PID 4 is the System process on Windows, always alive
+        assert!(check_pid_alive(4));
+    }
+
+    #[test]
+    fn check_pid_alive_returns_false_for_nonexistent_on_windows() {
+        assert!(!check_pid_alive(999999));
+    }
+
+    #[test]
+    fn kill_pid_returns_false_for_nonexistent_process() {
+        // Cannot open a non-existent process, so kill_pid returns false
+        assert!(!kill_pid(999999, 0));
+    }
+}
