@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 use crate::AppDirs;
 
 /// Download URLs for `SteamCMD` platform archives.
+#[cfg(not(target_os = "windows"))]
 const STEAMCMD_LINUX_URL: &str =
     "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz";
 #[cfg(target_os = "windows")]

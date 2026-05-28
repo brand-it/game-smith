@@ -112,7 +112,7 @@ impl Tray {
                 Self::dispatch(&event, &server_url);
             }
             if unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() } {
-                unsafe { TranslateMessage(&msg) };
+                let _ = unsafe { TranslateMessage(&msg) };
                 unsafe { DispatchMessageW(&msg) };
             } else {
                 std::thread::sleep(std::time::Duration::from_millis(16));

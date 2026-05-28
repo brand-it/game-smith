@@ -232,6 +232,7 @@ impl CommandExecWorker {
     /// The `setup_stdio` closure configures stdout/stderr on the [`Command`]
     /// and returns an optional reader handle (used by the PTY master on Linux,
     /// or `None` on Windows where the child's stdout pipe is used directly).
+    #[allow(unused_variables)]
     async fn perform_inner<F>(
         &self,
         run_id: i32,

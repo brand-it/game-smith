@@ -370,9 +370,9 @@ mod windows_tests {
     }
 
     #[test]
-    fn check_pid_alive_returns_true_for_system_process() {
-        // PID 4 is the System process on Windows, always alive
-        assert!(check_pid_alive(4));
+    fn check_pid_alive_returns_true_for_self() {
+        // Current process is always accessible
+        assert!(check_pid_alive(std::process::id() as i64));
     }
 
     #[test]
