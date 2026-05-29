@@ -99,6 +99,9 @@ servers-form-steam-password-placeholder = Your Steam account password
 servers-table-login-mode = Login
 servers-login-anonymous = Anonymous
 servers-login-steam = Steam Account
+servers-command-output = Command Output
+servers-command-output-help = Live output from the latest command run for this server.
+servers-command-run-id = Run
 
 # Additional status badges
 status-pending = Pending

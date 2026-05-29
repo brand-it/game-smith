@@ -77,13 +77,19 @@
 <h2 class="mt-8 text-lg font-semibold text-gray-900">{{ t(key="commands-detail-log-output", lang="en-US") }}</h2>
 
 {% if run.is_running %}
-<div class="mt-2 flex items-center gap-2">
+<div id="live-indicator" class="mt-2 flex items-center gap-2">
     <span class="relative flex h-2 w-2">
         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
     </span>
-    <span class="text-sm font-medium text-blue-600" id="live-indicator">{{ t(key="commands-detail-live", lang="en-US") }}</span>
+    <span class="text-sm font-medium text-blue-600">{{ t(key="commands-detail-live", lang="en-US") }}</span>
 </div>
+{% else %}
+<div id="live-indicator" class="mt-2 hidden"></div>
+{% endif %}
+
+{% if run.is_running %}
+<p class="mt-2 text-sm text-gray-500 italic hidden" id="final-status"></p>
 {% else %}
 <p class="mt-2 text-sm text-gray-500 italic" id="final-status">
     {{ t(key="commands-detail-completed-status", status=run.status, lang="en-US") }}

@@ -8,6 +8,38 @@ use std::collections::HashMap;
 pub type CommandRuns = Entity;
 use serde::{Deserialize, Serialize};
 
+/// Command run view wrapper that adds computed `is_running` for templates.
+///
+/// Serde serializes only struct fields — `is_running` is a method on
+/// [`Model`] and won't appear in serialized output. This wrapper
+/// adds `is_running` as a real field so Tera templates can use it in conditionals.
+#[derive(Debug, Serialize)]
+pub struct CommandRunView<'a> {
+    /// True when this run is still in "running" status.
+    pub is_running: bool,
+
+    #[serde(flatten)]
+    inner: &'a Model,
+}
+
+impl<'a> CommandRunView<'a> {
+    #[must_use]
+    pub fn new(run: &'a Model) -> Self {
+        Self {
+            is_running: run.is_running(),
+            inner: run,
+        }
+    }
+}
+
+impl std::ops::Deref for CommandRunView<'_> {
+    type Target = Model;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+
 /// Possible values for the `command_runs.status` column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -207,6 +239,23 @@ impl Model {
             .await
             .map_err(ModelError::from)
     }
+
+    /// Find the most recent command run for a specific server.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database query fails.
+    pub async fn find_latest_by_server(
+        ctx: &AppContext,
+        server_id: i64,
+    ) -> Result<Option<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::ServerId.eq(server_id))
+            .order_by_desc(Column::CreatedAt)
+            .limit(1)
+            .one(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
     /// Find all runs currently in "running" status.
     ///
     /// # Errors
@@ -308,3 +357,84 @@ impl Model {
 }
 
 impl Entity {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_run_view_exposes_is_running_true() {
+        let model = Model {
+            id: 1,
+            command: "test".to_string(),
+            args: serde_json::Value::Array(vec![]),
+            working_dir: None,
+            log_path: None,
+            env: None,
+            status: CommandStatus::Running.as_str().to_string(),
+            exit_code: None,
+            started_at: chrono::Utc::now().naive_utc(),
+            completed_at: None,
+            server_id: None,
+            log_removed: false,
+            pid: None,
+            title: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let view = CommandRunView::new(&model);
+        assert!(view.is_running);
+    }
+
+    #[test]
+    fn command_run_view_exposes_is_running_false() {
+        let model = Model {
+            id: 2,
+            command: "test".to_string(),
+            args: serde_json::Value::Array(vec![]),
+            working_dir: None,
+            log_path: None,
+            env: None,
+            status: CommandStatus::Completed.as_str().to_string(),
+            exit_code: Some(0),
+            started_at: chrono::Utc::now().naive_utc(),
+            completed_at: Some(chrono::Utc::now().naive_utc()),
+            server_id: None,
+            log_removed: false,
+            pid: None,
+            title: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let view = CommandRunView::new(&model);
+        assert!(!view.is_running);
+    }
+
+    #[test]
+    fn command_run_view_flattens_model_fields() {
+        let model = Model {
+            id: 42,
+            command: "steamcmd_install".to_string(),
+            args: serde_json::Value::Array(vec![serde_json::Value::String("+quit".to_string())]),
+            working_dir: Some("/tmp".to_string()),
+            log_path: None,
+            env: None,
+            status: CommandStatus::Running.as_str().to_string(),
+            exit_code: None,
+            started_at: chrono::Utc::now().naive_utc(),
+            completed_at: None,
+            server_id: Some(1),
+            log_removed: false,
+            pid: Some(1234),
+            title: Some("Install".to_string()),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let view = CommandRunView::new(&model);
+        assert_eq!(view.id, 42);
+        assert_eq!(view.command, "steamcmd_install");
+        assert_eq!(view.server_id, Some(1));
+        assert_eq!(view.pid, Some(1234));
+        assert_eq!(view.title, Some("Install".to_string()));
+    }
+}

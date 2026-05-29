@@ -386,3 +386,156 @@ async fn test_find_running_multiple() {
     assert_eq!(found.len(), 3);
     assert!(found.iter().all(|r| r.status() == CommandStatus::Running));
 }
+// ── find_latest_by_server tests ───────────────────────────────────────
+
+#[tokio::test]
+#[serial]
+async fn test_find_latest_by_server_empty() {
+    configure_insta!();
+
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create a game server to associate runs with
+    let server = game_smith::models::game_servers::ActiveModel::create(
+        &boot.app_context,
+        730,
+        "Test Server".to_string(),
+        "/tmp/game-smith/games/test-server".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create game server");
+
+    let found = CommandRunModel::find_latest_by_server(&boot.app_context, server.id as i64)
+        .await
+        .expect("Failed to query");
+
+    assert!(found.is_none());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_find_latest_by_server_returns_most_recent() {
+    configure_insta!();
+
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create a game server
+    let server = game_smith::models::game_servers::ActiveModel::create(
+        &boot.app_context,
+        730,
+        "Test Server".to_string(),
+        "/tmp/game-smith/games/test-server".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create game server");
+
+    // Create first run (older)
+    let first = ActiveModel::create_run(
+        &boot.app_context,
+        "echo".to_string(),
+        vec!["first".to_string()],
+        None,
+        None,
+        None,
+        None,
+        Some(server.id as i64),
+    )
+    .await
+    .expect("Failed to create first run");
+
+    // Small delay to ensure different created_at timestamps
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Create second run (newer)
+    let second = ActiveModel::create_run(
+        &boot.app_context,
+        "echo".to_string(),
+        vec!["second".to_string()],
+        None,
+        None,
+        None,
+        None,
+        Some(server.id as i64),
+    )
+    .await
+    .expect("Failed to create second run");
+
+    let found = CommandRunModel::find_latest_by_server(&boot.app_context, server.id as i64)
+        .await
+        .expect("Failed to query");
+
+    assert!(found.is_some());
+    let found = found.unwrap();
+    assert_eq!(found.id, second.id);
+    assert_ne!(found.id, first.id);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_find_latest_by_server_filters_by_server() {
+    configure_insta!();
+
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create two different game servers
+    let server_a = game_smith::models::game_servers::ActiveModel::create(
+        &boot.app_context,
+        730,
+        "Server A".to_string(),
+        "/tmp/game-smith/games/server-a".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create server A");
+
+    let server_b = game_smith::models::game_servers::ActiveModel::create(
+        &boot.app_context,
+        740,
+        "Server B".to_string(),
+        "/tmp/game-smith/games/server-b".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create server B");
+
+    // Create run for server B only
+    let run_b = ActiveModel::create_run(
+        &boot.app_context,
+        "echo".to_string(),
+        vec!["run-b".to_string()],
+        None,
+        None,
+        None,
+        None,
+        Some(server_b.id as i64),
+    )
+    .await
+    .expect("Failed to create run for B");
+
+    // Query for server A should return None
+    let found_a = CommandRunModel::find_latest_by_server(&boot.app_context, server_a.id as i64)
+        .await
+        .expect("Failed to query");
+    assert!(found_a.is_none());
+
+    // Query for server B should return the run
+    let found_b = CommandRunModel::find_latest_by_server(&boot.app_context, server_b.id as i64)
+        .await
+        .expect("Failed to query");
+    assert!(found_b.is_some());
+    assert_eq!(found_b.unwrap().id, run_b.id);
+}

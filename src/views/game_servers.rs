@@ -77,5 +77,34 @@ pub async fn show(
 ) -> Result<impl IntoResponse> {
     let is_running = crate::models::game_servers::is_alive(ctx, server).await;
     let view = GameServerView::new_with_running(server, is_running);
-    format::render().view(&v, "game_servers/show.html", data!({ "server": view }))
+
+    // Query latest command run for this server
+    let latest_run_model =
+        crate::models::command_runs::Model::find_latest_by_server(ctx, i64::from(server.id))
+            .await
+            .ok()
+            .flatten();
+    let latest_run = latest_run_model
+        .as_ref()
+        .map(crate::models::command_runs::CommandRunView::new);
+
+    // Read log content if a run exists
+    let run_log = if let Some(ref run_model) = latest_run_model {
+        crate::data::command_runner::CommandRunner::new(ctx)
+            .tail(run_model.id, None)
+            .await
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    format::render().view(
+        &v,
+        "game_servers/show.html",
+        data!({
+            "server": view,
+            "latest_run": latest_run,
+            "run_log": run_log,
+        }),
+    )
 }

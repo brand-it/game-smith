@@ -4,45 +4,47 @@
 {% block title %}{{ t(key="servers-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <h1 style="font-size:1.5rem;font-weight:700;color:#0f172a;margin:0">{{ t(key="servers-title", lang="en-US") }}</h1>
-    <a href="/servers/new" style="display:inline-flex;align-items:center;padding:8px 16px;background:#2563eb;color:#fff;font-size:0.875rem;font-weight:500;border-radius:6px;text-decoration:none" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-slate-900 m-0">{{ t(key="servers-title", lang="en-US") }}</h1>
+    <a href="/servers/new"
+        class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
         + {{ t(key="servers-new", lang="en-US") }}
     </a>
 </div>
 
 {% if servers|length > 0 %}
-<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-    <table style="width:100%;border-collapse:collapse;font-size:0.875rem">
+<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full border-collapse text-sm">
         <thead>
-            <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-name", lang="en-US") }}</th>
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-app-id", lang="en-US") }}</th>
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-platform", lang="en-US") }}</th>
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-status", lang="en-US") }}</th>
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-login-mode", lang="en-US") }}</th>
-                <th style="padding:10px 16px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">{{ t(key="servers-table-install-dir", lang="en-US") }}</th>
+            <tr>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-name", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-app-id", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-platform", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-status", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-login-mode", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-install-dir", lang="en-US") }}</th>
         </thead>
         <tbody>
             {% for server in servers %}
-            <tr style="border-bottom:1px solid #f1f5f9" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-                <td style="padding:12px 16px">
-                    <a href="/servers/{{ server.id }}" style="font-weight:600;color:#2563eb;text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ server.name }}</a>
+            <tr class="border-b border-gray-100 transition-colors hover:bg-gray-50">
+                <td class="px-4 py-3">
+                    <a href="/servers/{{ server.id }}" class="font-semibold text-blue-600 no-underline hover:underline">{{ server.name }}</a>
                 </td>
-                <td style="padding:12px 16px;font-family:monospace;color:#475569">{{ server.app_id }}</td>
-                <td style="padding:12px 16px;color:#475569">{{ server.platform }}</td>
-                <td style="padding:12px 16px">{{ macros::status_badge(status=server.status) }}</td>
-                <td style="padding:12px 16px;color:#475569">{% if server.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</td>
-                <td style="padding:12px 16px;font-family:monospace;font-size:0.75rem;color:#64748b;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ server.install_dir }}">{{ server.install_dir }}</td>
+                <td class="px-4 py-3 font-mono text-slate-600">{{ server.app_id }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ server.platform }}</td>
+                <td class="px-4 py-3">{{ macros::status_badge(status=server.status) }}</td>
+                <td class="px-4 py-3 text-slate-600">{% if server.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500 max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="{{ server.install_dir }}">{{ server.install_dir }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 {% else %}
-<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:64px 24px;text-align:center">
-    <p style="color:#64748b;margin:0 0 16px">{{ t(key="servers-empty", lang="en-US") }}</p>
-    <a href="/servers/new" style="display:inline-flex;align-items:center;padding:8px 16px;background:#2563eb;color:#fff;font-size:0.875rem;font-weight:500;border-radius:6px;text-decoration:none" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">
+<div class="bg-white border border-gray-200 rounded-lg p-16 text-center">
+    <p class="text-slate-500 m-0 mb-4">{{ t(key="servers-empty", lang="en-US") }}</p>
+    <a href="/servers/new"
+        class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
         + {{ t(key="servers-new", lang="en-US") }}
     </a>
 </div>

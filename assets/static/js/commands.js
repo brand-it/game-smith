@@ -4,6 +4,21 @@
 let socket = null;
 
 /**
+ * Tailwind utility classes for each status, matching _macros/status_badge.html.
+ */
+const BADGE_CLASSES = {
+  running: "inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800",
+  finished: "inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800",
+  completed: "inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800",
+  failed: "inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800",
+  stopped: "inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800",
+  installing: "inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800",
+  installed: "inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800",
+  pending: "inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-800",
+  error: "inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800",
+};
+
+/**
  * Connect to the Socket.IO /commands namespace and subscribe to a run's log.
  *
  * @param {number} runId - The command run ID to tail.
@@ -41,31 +56,42 @@ function connectToCommand(runId, initialStatus) {
     const status = event.status;
     const exitCode = event.exit_code;
 
-    // Update status badge
-    const badge = document.getElementById("status-badge");
-    if (badge) {
-      badge.textContent = status;
-      badge.className = `badge badge-${status}`;
+    // Update status badge using Tailwind classes
+    const badgeEl = document.getElementById("status-badge");
+    if (badgeEl) {
+      const classes = BADGE_CLASSES[status] || BADGE_CLASSES.pending;
+      badgeEl.innerHTML =
+        `<span class="${classes}">${status}</span>`;
     }
 
-    // Update exit code
+    // Update exit code display
     const exitCodeEl = document.getElementById("exit-code");
     if (exitCodeEl && exitCode !== null && exitCode !== undefined) {
-      exitCodeEl.textContent = exitCode;
+      if (exitCode === 0) {
+        exitCodeEl.innerHTML = '<span class="text-sm text-green-600">Success</span>';
+      } else {
+        exitCodeEl.innerHTML = `<span class="text-sm text-red-600">Exit code: ${exitCode}</span>`;
+      }
     }
 
     // Hide live indicator
     const liveEl = document.getElementById("live-indicator");
     if (liveEl) {
-      liveEl.style.display = "none";
+      liveEl.classList.add("hidden");
     }
 
     // Show final status
     const finalEl = document.getElementById("final-status");
     if (finalEl) {
-      finalEl.style.display = "block";
+      finalEl.classList.remove("hidden");
       finalEl.textContent = `Run completed with status: ${status}`;
     }
+
+    // Reload to refresh the actions section (Start/Stop buttons depend on server.is_running)
+    const reloadTimer = setTimeout(() => {
+      window.location.reload();
+    }, 2000);
+    window.addEventListener("beforeunload", () => clearTimeout(reloadTimer), { once: true });
 
     socket.disconnect();
     socket = null;
