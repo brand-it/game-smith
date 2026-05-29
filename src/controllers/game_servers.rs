@@ -1,3 +1,4 @@
+use crate::controllers::error::StandardError;
 use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::extract::Form;
 use axum::response::Redirect;
@@ -33,59 +34,61 @@ pub struct CreateServerForm {
 /// GET /servers — list all game servers.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the database query fails or rendering fails.
+/// Returns a [`StandardError`] if the database query fails or rendering fails.
 pub async fn list(
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,
-) -> Result<impl IntoResponse> {
-    let servers = game_servers::Model::list(&ctx)
-        .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to list game servers: {e}")))?;
-    crate::views::game_servers::list(&ctx, v, &servers).await
+) -> Result<impl IntoResponse, StandardError> {
+    let servers = game_servers::Model::list(&ctx).await.map_err(|e| {
+        StandardError::InternalServerError(format!("failed to list game servers: {e}"))
+    })?;
+    Ok(crate::views::game_servers::list(&ctx, v, &servers).await?)
 }
 
 /// GET /servers/new — show the install form.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if rendering fails.
+/// Returns a [`StandardError`] if rendering fails.
 pub async fn new_form(
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let username = steam_credentials::Model::find(&ctx)
         .await
         .ok()
         .flatten()
         .map(|record| record.username);
-    crate::views::game_servers::new_form(v, username.as_deref())
+    Ok(crate::views::game_servers::new_form(
+        v,
+        username.as_deref(),
+    )?)
 }
-
 /// POST /servers — create a new game server and start installation.
 ///
 /// Creates the game server record, kicks off the `SteamCMD` installation,
 /// and redirects to the command detail page where progress is streamed.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if validation fails, the record cannot be
+/// Returns a [`StandardError`] if validation fails, the record cannot be
 /// created, or the installation cannot be started.
 pub async fn create(
     State(ctx): State<AppContext>,
     Form(form): Form<CreateServerForm>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     // Validate app_id
     let app_id: u32 = form
         .app_id
         .parse()
-        .map_err(|_| loco_rs::Error::string("Invalid App ID"))?;
+        .map_err(|_| StandardError::BadRequest("Invalid App ID".into()))?;
 
     if app_id == 0 {
-        return Err(loco_rs::Error::string("App ID cannot be zero"));
+        return Err(StandardError::BadRequest("App ID cannot be zero".into()));
     }
 
     // Validate name
     let name = form.name.trim().to_string();
     if name.is_empty() {
-        return Err(loco_rs::Error::string("Name cannot be empty"));
+        return Err(StandardError::BadRequest("Name cannot be empty".into()));
     }
 
     // Detect platform from the current OS
@@ -136,14 +139,15 @@ pub async fn create(
         use_steam_login,
     )
     .await
-    .map_err(|e| loco_rs::Error::string(&format!("failed to create game server: {e}")))?;
+    .map_err(|e| {
+        StandardError::InternalServerError(format!("failed to create game server: {e}"))
+    })?;
 
     // Start installation
     let installer = GameServerInstaller::new(&ctx);
-    let run = installer
-        .install(&server)
-        .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to start installation: {e}")))?;
+    let run = installer.install(&server).await.map_err(|e| {
+        StandardError::InternalServerError(format!("failed to start installation: {e}"))
+    })?;
 
     // Update server status to installing
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, server.id).await {
@@ -160,49 +164,55 @@ pub async fn create(
 /// GET /servers/:id — show game server details.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found or rendering fails.
+/// Returns a [`StandardError`] if the server is not found or rendering fails.
 pub async fn show(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
-    crate::views::game_servers::show(&ctx, v, &server).await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+    Ok(crate::views::game_servers::show(&ctx, v, &server).await?)
 }
 
 /// POST /servers/:id/start — start a game server.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found or cannot be started.
+/// Returns a [`StandardError`] if the server is not found or cannot be started.
 pub async fn start_server(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
     if game_servers::is_alive(&ctx, &server).await {
         return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
     }
 
     let installer = GameServerInstaller::new(&ctx);
-    let _run = installer
+    if installer
         .start(&server)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to start server: {e}")))?;
-
-    // Update server status to running
-    // PID is tracked asynchronously by CommandExecWorker
-    if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {
-        let mut active: game_servers::ActiveModel = active_server.into();
-        let _ = active
-            .update_status(&ctx, ServerStatus::Running, None)
-            .await;
+        .map_err(|e| StandardError::InternalServerError(format!("failed to start server: {e}")))?
+        .is_some()
+    {
+        // Update server status to running only if we actually started something.
+        // PID is tracked asynchronously by CommandExecWorker.
+        if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {
+            let mut active: game_servers::ActiveModel = active_server.into();
+            let _ = active
+                .update_status(&ctx, ServerStatus::Running, None)
+                .await;
+        }
     }
 
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
@@ -211,21 +221,23 @@ pub async fn start_server(
 /// POST /servers/:id/stop — stop a running game server.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found or cannot be stopped.
+/// Returns a [`StandardError`] if the server is not found or cannot be stopped.
 pub async fn stop_server(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
     let installer = GameServerInstaller::new(&ctx);
     installer
         .stop(&server)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to stop server: {e}")))?;
+        .map_err(|e| StandardError::InternalServerError(format!("failed to stop server: {e}")))?;
 
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
@@ -233,21 +245,23 @@ pub async fn stop_server(
 /// POST /servers/:id/update — update a game server via `SteamCMD`.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found or update fails.
+/// Returns a [`StandardError`] if the server is not found or update fails.
 pub async fn update_server(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
     let installer = GameServerInstaller::new(&ctx);
     let run = installer
         .update(&server)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to update server: {e}")))?;
+        .map_err(|e| StandardError::InternalServerError(format!("failed to update server: {e}")))?;
 
     // Update server status
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {
@@ -263,22 +277,26 @@ pub async fn update_server(
 /// POST /servers/:id/boot-script — update the boot script for a game server.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found.
+/// Returns a [`StandardError`] if the server is not found.
 pub async fn update_boot_script(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
     Form(form): Form<BootScriptForm>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
     let mut active: game_servers::ActiveModel = server.into();
     active
         .update_boot_script(&ctx, Some(form.boot_script))
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to update boot script: {e}")))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to update boot script: {e}"))
+        })?;
 
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
@@ -288,15 +306,17 @@ pub async fn update_boot_script(
 /// Does not remove files from the install directory.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if the server is not found or deletion fails.
+/// Returns a [`StandardError`] if the server is not found or deletion fails.
 pub async fn delete_server(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-) -> Result<impl IntoResponse> {
+) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to find game server: {e}")))?
-        .ok_or_else(|| loco_rs::Error::string("Game server not found"))?;
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
     // Stop server if actually running
     if game_servers::is_alive(&ctx, &server).await {
         let installer = GameServerInstaller::new(&ctx);
@@ -313,7 +333,7 @@ pub async fn delete_server(
     installer
         .delete(&server)
         .await
-        .map_err(|e| loco_rs::Error::string(&format!("failed to delete server: {e}")))?;
+        .map_err(|e| StandardError::InternalServerError(format!("failed to delete server: {e}")))?;
 
     Ok(Redirect::to("/servers").into_response())
 }
@@ -346,26 +366,27 @@ async fn save_steam_credentials(
     ctx: &AppContext,
     username: &str,
     password: &str,
-) -> Result<(), loco_rs::Error> {
+) -> Result<(), StandardError> {
     // Load encryption key
     let data_home = resolve_data_home();
     let dirs = AppDirs::new(data_home);
     let key_path = dirs.app_dir.join("secret.key");
 
-    let key = EncryptionKey::load(&key_path)
-        .map_err(|e| loco_rs::Error::string(&format!("failed to load encryption key: {e}")))?;
+    let key = EncryptionKey::load(&key_path).map_err(|e| {
+        StandardError::InternalServerError(format!("failed to load encryption key: {e}"))
+    })?;
 
     // Encrypt password
-    let (nonce, ciphertext) = key
-        .encrypt(password)
-        .map_err(|e| loco_rs::Error::string(&format!("failed to encrypt password: {e}")))?;
+    let (nonce, ciphertext) = key.encrypt(password).map_err(|e| {
+        StandardError::InternalServerError(format!("failed to encrypt password: {e}"))
+    })?;
 
     // Store credentials
     let _record =
         steam_credentials::ActiveModel::store(ctx, username.to_string(), nonce, ciphertext)
             .await
             .map_err(|e| {
-                loco_rs::Error::string(&format!("failed to save steam credentials: {e}"))
+                StandardError::InternalServerError(format!("failed to save steam credentials: {e}"))
             })?;
 
     Ok(())

@@ -184,5 +184,8 @@ async fn servers_create_checkbox_non_true_value_fails() {
     // A non-"true" value should fail deserialization since the field expects a bool
     let data = "app_id=730&name=Test+Server&use_steam_login=on";
     let result: Result<CreateServerForm, _> = serde_urlencoded::from_str(data);
-    assert!(result.is_err(), "non-true value should fail deserialization");
+    assert!(
+        result.is_err(),
+        "non-true value should fail deserialization"
+    );
 }

@@ -86,12 +86,21 @@ pub fn slugify(name: &str) -> String {
 
 /// Compute the default install directory for a game server.
 ///
-/// Format: `~/game-smith/games/{slug}/`
+/// - Linux: `~/game-smith/games/{slug}/`
+/// - Windows: `%USERPROFILE%\game-smith\games\{slug}`
 #[must_use]
 pub fn default_install_dir(name: &str) -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/"));
     let slug = slugify(name);
-    format!("{home}/game-smith/games/{slug}")
+    #[cfg(target_os = "windows")]
+    {
+        let home = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("%USERPROFILE%"));
+        format!("{home}\\game-smith\\games\\{slug}")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/"));
+        format!("{home}/game-smith/games/{slug}")
+    }
 }
 /// Cross-platform signal constant for termination.
 /// Resolves to `libc::SIGTERM` on Linux; `0` on Windows (ignored by `kill_pid`).

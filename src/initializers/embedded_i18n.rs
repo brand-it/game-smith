@@ -29,12 +29,15 @@ const VIEWS_DIR: Dir<'_> = include_dir!("assets/views");
 /// via `add_raw_template`.
 fn build_tera() -> Result<tera::Tera> {
     let mut tera = tera::Tera::default();
-    register_templates(&mut tera, &VIEWS_DIR)?;
+    let templates = collect_templates(&VIEWS_DIR)?;
+    tera.add_raw_templates(templates)
+        .map_err(|e| loco_rs::Error::string(&format!("failed to register templates: {e}")))?;
     Ok(tera)
 }
 
-/// Recursively register all template files from an embedded directory.
-fn register_templates(tera: &mut tera::Tera, dir: &Dir<'_>) -> Result<()> {
+/// Recursively collect all template files from an embedded directory.
+fn collect_templates(dir: &Dir<'_>) -> Result<Vec<(String, String)>> {
+    let mut templates = Vec::new();
     for entry in dir.entries() {
         match entry {
             DirEntry::File(file) => {
@@ -46,16 +49,14 @@ fn register_templates(tera: &mut tera::Tera, dir: &Dir<'_>) -> Result<()> {
                 let content = std::str::from_utf8(file.contents()).map_err(|e| {
                     loco_rs::Error::string(&format!("invalid UTF-8 in template {name}: {e}"))
                 })?;
-                tera.add_raw_template(&name, content).map_err(|e| {
-                    loco_rs::Error::string(&format!("failed to register {name}: {e}"))
-                })?;
+                templates.push((name, content.to_string()));
             }
             DirEntry::Dir(subdir) => {
-                register_templates(tera, subdir)?;
+                templates.extend(collect_templates(subdir)?);
             }
         }
     }
-    Ok(())
+    Ok(templates)
 }
 
 /// Embedded views engine — wraps a [`tera::Tera`] instance built from

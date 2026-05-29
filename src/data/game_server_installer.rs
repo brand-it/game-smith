@@ -339,7 +339,8 @@ impl GameServerInstaller {
     /// Start a game server using its boot script.
     ///
     /// If no boot script is configured, attempts to find and run the default
-    /// server executable.
+    /// server executable. If neither is available, logs a warning and returns
+    /// `Ok(None)` without erroring.
     ///
     /// # Arguments
     /// * `server` - The game server model record.
@@ -349,7 +350,7 @@ impl GameServerInstaller {
     pub async fn start(
         &self,
         server: &game_servers::Model,
-    ) -> Result<crate::data::command_runner::CommandRun, GameServerError> {
+    ) -> Result<Option<crate::data::command_runner::CommandRun>, GameServerError> {
         let runner = CommandRunner::new(&self.ctx);
 
         let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
@@ -378,16 +379,11 @@ impl GameServerInstaller {
                     install_dir = %server.install_dir,
                     "No server executable found and no boot script configured"
                 );
-                return Err(GameServerError::Execute(ModelError::from(Box::new(
-                    std::io::Error::other(
-                        "no boot script configured and no server executable found",
-                    ),
-                )
-                    as Box<dyn std::error::Error + Send + Sync>)));
+                return Ok(None);
             }
         };
 
-        runner
+        let run = runner
             .execute(
                 command,
                 args,
@@ -397,7 +393,9 @@ impl GameServerInstaller {
                 Some(i64::from(server.id)),
             )
             .await
-            .map_err(GameServerError::Execute)
+            .map_err(GameServerError::Execute)?;
+
+        Ok(Some(run))
     }
 
     /// Attempt to find a server executable in the install directory.
@@ -609,6 +607,9 @@ mod tests {
     #[test]
     fn test_default_install_dir() {
         let dir = game_servers::default_install_dir("My Server");
+        #[cfg(target_os = "windows")]
+        assert!(dir.contains("\\game-smith\\games\\my-server"));
+        #[cfg(not(target_os = "windows"))]
         assert!(dir.contains("/game-smith/games/my-server"));
     }
 
