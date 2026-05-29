@@ -220,17 +220,28 @@ impl CommandExecWorker {
         }
     }
 
-    /// After an install/update command completes, update the associated game
-    /// server's status so it doesn't stay stuck at "installing".
+    /// Extract the last non-empty line from a log file as an error message.
+    fn last_log_line(model: &CommandRunModel, fallback: &str) -> Option<String> {
+        model
+            .log_path
+            .as_ref()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|content| {
+                content
+                    .lines()
+                    .rev()
+                    .find(|line| !line.trim().is_empty())
+                    .map(String::from)
+            })
+            .or_else(|| Some(fallback.to_string()))
+    }
+
+    /// Update the game server's status after a command run completes.
+    /// Handles both install/update commands and regular server start/stop.
     async fn maybe_update_server_status(&self, run_id: i32, final_status: CommandStatus) {
         let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
             return;
         };
-
-        // Only act on install/update commands
-        if !Self::is_install_update(&model) {
-            return;
-        }
 
         let Some(server_id) = model.server_id else {
             return;
@@ -246,25 +257,27 @@ impl CommandExecWorker {
             return;
         };
 
-        let (new_status, last_error) = match final_status {
-            CommandStatus::Completed => (ServerStatus::Installed, None),
-            CommandStatus::Failed => {
-                // Try to extract the last meaningful error line from the log
-                let last_error = model
-                    .log_path
-                    .as_ref()
-                    .and_then(|path| std::fs::read_to_string(path).ok())
-                    .and_then(|content| {
-                        content
-                            .lines()
-                            .rev()
-                            .find(|line| !line.trim().is_empty())
-                            .map(String::from)
-                    })
-                    .or_else(|| Some("Installation failed".to_string()));
-                (ServerStatus::Error, last_error)
+        let (new_status, last_error) = if Self::is_install_update(&model) {
+            // Install/update command
+            match final_status {
+                CommandStatus::Completed => (ServerStatus::Installed, None),
+                CommandStatus::Failed => {
+                    let last_error = Self::last_log_line(&model, "Installation failed");
+                    (ServerStatus::Error, last_error)
+                }
+                CommandStatus::Running => return,
             }
-            CommandStatus::Running => return,
+        } else {
+            // Start command — update status when the process exits
+            match final_status {
+                CommandStatus::Completed => (ServerStatus::Stopped, None),
+                CommandStatus::Failed => {
+                    let last_error =
+                        Self::last_log_line(&model, "Server process exited with failure");
+                    (ServerStatus::Error, last_error)
+                }
+                CommandStatus::Running => return,
+            }
         };
 
         let mut active: crate::models::game_servers::ActiveModel = server.into();
@@ -276,7 +289,7 @@ impl CommandExecWorker {
                 server_id,
                 %new_status,
                 error = %e,
-                "Failed to update game server status after install"
+                "Failed to update game server status"
             );
         }
     }

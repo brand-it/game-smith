@@ -258,7 +258,7 @@ pub async fn update_server(
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
     let installer = GameServerInstaller::new(&ctx);
-    let run = installer
+    let _run = installer
         .update(&server)
         .await
         .map_err(|e| StandardError::InternalServerError(format!("failed to update server: {e}")))?;
@@ -271,7 +271,7 @@ pub async fn update_server(
             .await;
     }
 
-    Ok(Redirect::to(&format!("/commands/{}", run.id)).into_response())
+    Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
 
 /// POST /servers/:id/boot-script — update the boot script for a game server.
