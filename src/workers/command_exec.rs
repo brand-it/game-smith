@@ -18,6 +18,9 @@ pub struct CommandExecWorker {
     pub ctx: AppContext,
 }
 
+/// Delay before auto-restarting a game server process (seconds).
+const AUTO_RESTART_DELAY_SECS: u64 = 5;
+
 impl CommandExecWorker {
     /// Load the run record and verify it is still in "running" state.
     async fn fetch_and_validate(&self, run_id: i32) -> Result<CommandRunModel> {
@@ -167,6 +170,56 @@ impl CommandExecWorker {
         is_steamcmd && has_runscript
     }
 
+    /// Returns true if this server should auto-restart after process exit.
+    ///
+    /// Checks that the run is associated with a game server (not an install/
+    /// update command) and that the server's `auto_restart` flag is set.
+    async fn should_auto_restart(&self, run_id: i32) -> bool {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return false;
+        };
+
+        if Self::is_install_update(&model) {
+            return false;
+        }
+
+        let Some(server_id) = model.server_id else {
+            return false;
+        };
+
+        let Ok(server_id_i32) = i32::try_from(server_id) else {
+            return false;
+        };
+
+        let Ok(Some(server)) =
+            crate::models::game_servers::Model::find_by_id(&self.ctx, server_id_i32).await
+        else {
+            return false;
+        };
+
+        server.auto_restart
+    }
+
+    /// Append an auto-restart marker line to the run's log file.
+    async fn write_restart_marker(&self, run_id: i32) {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return;
+        };
+        let Some(ref log_path) = model.log_path else {
+            return;
+        };
+
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let marker = format!("\n[{timestamp}] Auto-restarting server...\n");
+        if let Err(e) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(log_path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, marker.as_bytes()))
+        {
+            tracing::warn!(run_id, error = %e, "failed to write restart marker to log");
+        }
+    }
+
     /// After an install/update command completes, update the associated game
     /// server's status so it doesn't stay stuck at "installing".
     async fn maybe_update_server_status(&self, run_id: i32, final_status: CommandStatus) {
@@ -227,164 +280,21 @@ impl CommandExecWorker {
             );
         }
     }
-    /// Shared inner execution logic after platform-specific stdio setup.
+
+    /// Spawn a single process and wait for it to exit.
     ///
-    /// The `setup_stdio` closure configures stdout/stderr on the [`Command`]
-    /// and returns an optional reader handle (used by the PTY master on Linux,
-    /// or `None` on Windows where the child's stdout pipe is used directly).
-    #[allow(unused_variables)]
-    async fn perform_inner<F>(
+    /// Returns the [`CommandStatus`] and exit code. Does _not_ persist the
+    /// final status — the caller is responsible for that so it can decide
+    /// whether to auto-restart first.
+    #[cfg(target_os = "linux")]
+    async fn spawn_one(
         &self,
         run_id: i32,
-        model: CommandRunModel,
-        setup_stdio: F,
-    ) -> Result<()>
-    where
-        F: FnOnce(&mut Command) -> std::result::Result<Option<std::fs::File>, loco_rs::Error>
-            + Send,
-    {
-        // 3. Build the command
-        let cmd_args: Vec<String> = model
-            .args
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default();
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let cmd_args = Self::resolve_args(model);
 
-        let mut cmd = Command::new(&model.command);
-        cmd.args(&cmd_args);
-
-        // Configure stdout/stderr (platform-specific)
-        let master_reader = setup_stdio(&mut cmd)?;
-
-        cmd.kill_on_drop(true);
-
-        if let Some(dir) = &model.working_dir {
-            cmd.current_dir(dir);
-        }
-
-        if let Some(env_json) = &model.env {
-            if let Ok(variables) =
-                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
-            {
-                for (key, value) in variables {
-                    cmd.env(key, value);
-                }
-            }
-        }
-
-        // 4. Spawn the process
-        let mut child = cmd.spawn().map_err(|e| {
-            let ctx = self.ctx.clone();
-            let rid = run_id;
-            let is_health_check = Self::is_health_check(&model);
-            let error_msg = e.to_string();
-            let kind = e.kind();
-            let error_for_log = error_msg.clone();
-            tokio::spawn(async move {
-                Self::_log_spawn_failed(&ctx, rid, is_health_check, &error_for_log, kind).await;
-            });
-            loco_rs::Error::string(&format!("failed to spawn process: {error_msg}"))
-        })?;
-
-        // 5. Store PID in database
-        if let Some(pid) = child.id() {
-            self.store_pid(run_id, pid).await;
-        }
-
-        // 6. Read output into log file
-        #[cfg(target_os = "linux")]
-        {
-            // PTY master reader
-            let log_path = model.log_path.clone();
-            if let Some(log_path) = &log_path {
-                let log_file = std::fs::File::create(log_path).map_err(|e| {
-                    loco_rs::Error::string(&format!("failed to create log file: {e}"))
-                })?;
-                let log_file = tokio::fs::File::from_std(log_file);
-                if let Some(master) = master_reader {
-                    let master = tokio::fs::File::from_std(master);
-                    let log_path_str = log_path.clone();
-                    tokio::spawn(async move {
-                        let mut master = tokio::io::BufReader::new(master);
-                        let mut log_file = log_file;
-                        if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
-                            tracing::warn!(%log_path_str, error = %e, "PTY reader failed");
-                        }
-                    });
-                }
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            // Pipe child stdout/stderr to log file
-            let log_path = model.log_path.clone();
-            if let Some(log_path) = &log_path {
-                let log_file = std::fs::File::create(log_path).map_err(|e| {
-                    loco_rs::Error::string(&format!("failed to create log file: {e}"))
-                })?;
-                let log_file = tokio::fs::File::from_std(log_file);
-                let log_path_str = log_path.clone();
-                if let Some(stdout) = child.stdout.take() {
-                    let mut stdout = tokio::io::BufReader::new(stdout);
-                    tokio::spawn(async move {
-                        let mut log_file = log_file;
-                        if let Err(e) = tokio::io::copy_buf(&mut stdout, &mut log_file).await {
-                            tracing::warn!(%log_path_str, error = %e, "stdout pipe reader failed");
-                        }
-                    });
-                }
-            }
-            // Discard stderr (already captured by kill_on_drop cleanup)
-            let _ = child.stderr.take();
-        }
-
-        // 7. Wait for completion
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
-
-        // 8. Determine and persist final status
-        let (final_status, exit_code) = Self::determine_status(status);
-        self.update_final_status(run_id, exit_code, final_status)
-            .await?;
-        self.maybe_update_health_status(run_id, final_status, exit_code)
-            .await;
-        self.maybe_update_server_status(run_id, final_status).await;
-
-        Ok(())
-    }
-}
-
-/// Arguments for executing a command via [`CommandExecWorker`].
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CommandExecWorkerArgs {
-    pub run_id: i32,
-}
-
-#[async_trait]
-impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
-    fn build(ctx: &AppContext) -> Self {
-        Self { ctx: ctx.clone() }
-    }
-
-    /// Linux implementation: uses PTY for line-buffered real-time output.
-    #[cfg(target_os = "linux")]
-    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
-        let CommandExecWorkerArgs { run_id } = args;
-
-        // 1. Validate run exists and is still active
-        let Ok(model) = self.fetch_and_validate(run_id).await else {
-            return Ok(());
-        };
-
-        // 2. Create PTY so child's stdout is line-buffered (real-time output)
+        // Create PTY for line-buffered output
         let mut master_fd: libc::c_int = 0;
         let mut slave_fd: libc::c_int = 0;
         if unsafe {
@@ -402,40 +312,234 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
                 std::io::Error::last_os_error()
             )));
         }
+
         let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
         let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
-        // master_fd and slave_fd are now owned by their respective std::fs::File handles
 
-        // 3. Build the command with PTY as stdout/stderr
-        self.perform_inner(run_id, model, |cmd| {
-            cmd.stdout(std::process::Stdio::from(slave.try_clone().map_err(
-                |e| loco_rs::Error::string(&format!("failed to clone slave for stdout: {e}")),
-            )?));
-            cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
-                |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
-            )?));
-            // slave (original) is dropped here, closing the original slave fd in parent
-            Ok::<_, loco_rs::Error>(Some(master))
-        })
-        .await
+        let mut cmd = Command::new(&model.command);
+        cmd.args(&cmd_args);
+        cmd.stdout(std::process::Stdio::from(slave.try_clone().map_err(
+            |e| loco_rs::Error::string(&format!("failed to clone slave for stdout: {e}")),
+        )?));
+        cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
+            |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
+        )?));
+        // Original slave dropped here — closes slave fd in parent process
+        drop(slave);
+
+        cmd.kill_on_drop(true);
+
+        if let Some(dir) = &model.working_dir {
+            cmd.current_dir(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(key, value);
+                }
+            }
+        }
+
+        let mut child = cmd.spawn().map_err(|e| {
+            let ctx = self.ctx.clone();
+            let rid = run_id;
+            let is_hc = Self::is_health_check(model);
+            let msg = e.to_string();
+            let kind = e.kind();
+            tokio::spawn(async move {
+                Self::_log_spawn_failed(&ctx, rid, is_hc, &msg, kind).await;
+            });
+            loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+        })?;
+
+        if let Some(pid) = child.id() {
+            self.store_pid(run_id, pid).await;
+        }
+
+        // Stream PTY master → log file
+        let log_path = model.log_path.clone();
+        if let Some(ref lp) = log_path {
+            let log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(lp)
+                .ok();
+            if let Some(lf) = log_file {
+                let master = tokio::fs::File::from_std(master);
+                let log_file = tokio::fs::File::from_std(lf);
+                let lp = lp.clone();
+                tokio::spawn(async move {
+                    let mut master = tokio::io::BufReader::new(master);
+                    let mut log_file = log_file;
+                    if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
+                        tracing::warn!(%lp, error = %e, "PTY reader failed");
+                    }
+                });
+            }
+        }
+
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
+
+        Ok(Self::determine_status(status))
     }
 
-    /// Windows implementation: uses piped stdio.
+    /// Spawn a single process and wait for it to exit (Windows).
     #[cfg(target_os = "windows")]
+    async fn spawn_one(
+        &self,
+        run_id: i32,
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let cmd_args = Self::resolve_args(model);
+
+        let mut cmd = Command::new(&model.command);
+        cmd.args(&cmd_args);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.kill_on_drop(true);
+
+        if let Some(dir) = &model.working_dir {
+            cmd.current_dir(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(key, value);
+                }
+            }
+        }
+
+        let mut child = cmd.spawn().map_err(|e| {
+            let ctx = self.ctx.clone();
+            let rid = run_id;
+            let is_hc = Self::is_health_check(model);
+            let msg = e.to_string();
+            let kind = e.kind();
+            tokio::spawn(async move {
+                Self::_log_spawn_failed(&ctx, rid, is_hc, &msg, kind).await;
+            });
+            loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+        })?;
+
+        if let Some(pid) = child.id() {
+            self.store_pid(run_id, pid).await;
+        }
+
+        // Stream stdout → log file
+        let log_path = model.log_path.clone();
+        if let Some(ref lp) = log_path {
+            let log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(lp)
+                .ok();
+            if let Some(lf) = log_file {
+                let log_file = tokio::fs::File::from_std(lf);
+                let lp = lp.clone();
+                if let Some(stdout) = child.stdout.take() {
+                    tokio::spawn(async move {
+                        let mut stdout = tokio::io::BufReader::new(stdout);
+                        if let Err(e) = tokio::io::copy_buf(&mut stdout, &mut log_file).await {
+                            tracing::warn!(%lp, error = %e, "stdout pipe reader failed");
+                        }
+                    });
+                }
+            }
+        }
+        let _ = child.stderr.take();
+
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
+
+        Ok(Self::determine_status(status))
+    }
+
+    /// Parse args from the `SeaORM` JSON array.
+    fn resolve_args(model: &CommandRunModel) -> Vec<String> {
+        model
+            .args
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Main execution loop: spawn the process, wait for it, auto-restart if
+    /// configured.
+    ///
+    /// Keeps the same command run record (same `run_id`) across restarts,
+    /// appending restart markers to the log and updating the stored PID each
+    /// time a new process is spawned.
+    async fn perform_inner(
+        &self,
+        run_id: i32,
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let result = loop {
+            let (status, exit_code) = self.spawn_one(run_id, model).await?;
+
+            if !self.should_auto_restart(run_id).await {
+                break Ok((status, exit_code));
+            }
+
+            // Run was manually stopped — don't restart
+            let updated = CommandRunModel::find_by_id(&self.ctx, run_id).await;
+            if let Ok(Some(m)) = updated {
+                if !m.is_running() {
+                    break Ok((status, exit_code));
+                }
+            }
+
+            tracing::info!(run_id, "auto-restarting game server process");
+            self.write_restart_marker(run_id).await;
+            tokio::time::sleep(std::time::Duration::from_secs(AUTO_RESTART_DELAY_SECS)).await;
+        };
+        result
+    }
+}
+
+/// Arguments for executing a command via [`CommandExecWorker`].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommandExecWorkerArgs {
+    pub run_id: i32,
+}
+
+#[async_trait]
+impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
+    fn build(ctx: &AppContext) -> Self {
+        Self { ctx: ctx.clone() }
+    }
+
+    /// Fetches the command run, executes (potentially auto-restarting), then
+    /// updates final status. Platform-specific spawning is handled by
+    /// [`spawn_one`].
     async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
         let CommandExecWorkerArgs { run_id } = args;
 
-        // 1. Validate run exists and is still active
         let Ok(model) = self.fetch_and_validate(run_id).await else {
             return Ok(());
         };
 
-        // Use piped stdio instead of PTY
-        self.perform_inner(run_id, model, |cmd| {
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::piped());
-            Ok::<_, loco_rs::Error>(None)
-        })
-        .await
+        let (final_status, exit_code) = self.perform_inner(run_id, &model).await?;
+
+        self.update_final_status(run_id, exit_code, final_status)
+            .await?;
+        self.maybe_update_health_status(run_id, final_status, exit_code)
+            .await;
+        self.maybe_update_server_status(run_id, final_status).await;
+
+        Ok(())
     }
 }

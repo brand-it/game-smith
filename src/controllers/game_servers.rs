@@ -338,6 +338,42 @@ pub async fn delete_server(
     Ok(Redirect::to("/servers").into_response())
 }
 
+/// POST /servers/:id/auto-restart — update the auto-restart setting.
+///
+/// # Errors
+/// Returns a [`StandardError`] if the server is not found.
+pub async fn update_auto_restart(
+    Path(id): Path<i32>,
+    State(ctx): State<AppContext>,
+    request: axum::extract::Request,
+) -> Result<impl IntoResponse, StandardError> {
+    // Parse form body manually to avoid deserialization errors on malformed input
+    let body_bytes = axum::body::to_bytes(request.into_body(), 8192)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to read request body: {e}"))
+        })?;
+    let body_text = String::from_utf8_lossy(&body_bytes);
+    let auto_restart = body_text.contains("auto_restart=true");
+
+    let server = game_servers::Model::find_by_id(&ctx, id)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+
+    let mut active: game_servers::ActiveModel = server.into();
+    active
+        .update_auto_restart(&ctx, auto_restart)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to update auto-restart: {e}"))
+        })?;
+
+    Ok(Redirect::to(&format!("/servers/{id}")).into_response())
+}
+
 /// Form data for updating the boot script.
 #[derive(Debug, Deserialize)]
 pub struct BootScriptForm {
@@ -357,6 +393,7 @@ pub fn routes() -> Routes {
         .add("/{id}/update", post(update_server))
         .add("/{id}/boot-script", post(update_boot_script))
         .add("/{id}/delete", post(delete_server))
+        .add("/{id}/auto-restart", post(update_auto_restart))
 }
 
 /// Save or update Steam credentials in the database.

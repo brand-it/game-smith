@@ -155,16 +155,14 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
 
 /// Check whether this server process is actually alive.
 ///
-/// Returns `true` only if there is a running [`command_runs`][super::command_runs::Model] record
-/// for this server whose PID corresponds to a living process.
-/// The DB status column is ignored — it represents intent, not observation.
-pub async fn is_alive(ctx: &AppContext, server: &Model) -> bool {
-    let Ok(runs) =
-        super::command_runs::Model::find_running_by_server(ctx, i64::from(server.id)).await
-    else {
-        return false;
-    };
-    runs.iter().any(|run| run.pid.is_some_and(check_pid_alive))
+/// The DB `status` column is authoritative — it represents user intent
+/// (start/stop). The PID provides ground-truth observation, but during
+/// restarts there may be a brief window where the PID is dead but the
+/// worker is about to spawn a new process. Trusting the status column
+/// avoids flickering the stop button.
+#[allow(clippy::unused_async)]
+pub async fn is_alive(_ctx: &AppContext, server: &Model) -> bool {
+    server.status() == ServerStatus::Running
 }
 
 #[async_trait::async_trait]
@@ -277,6 +275,19 @@ impl ActiveModel {
         boot_script: Option<String>,
     ) -> Result<Model, ModelError> {
         self.boot_script = ActiveValue::Set(boot_script);
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
+
+    /// Update the auto-restart setting for a game server.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_auto_restart(
+        &mut self,
+        ctx: &AppContext,
+        auto_restart: bool,
+    ) -> Result<Model, ModelError> {
+        self.auto_restart = ActiveValue::Set(auto_restart);
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
 }

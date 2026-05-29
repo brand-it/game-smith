@@ -97,6 +97,21 @@
 </div>
 
 <!-- Boot Script -->
+<!-- Settings -->
+<div class="bg-white border border-gray-200 rounded-lg p-6">
+    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{ t(key="servers-settings", lang="en-US") }}</h2>
+    <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="servers-auto-restart-help", lang="en-US") }}</p>
+    <form action="/servers/{{ server.id }}/auto-restart" method="post" class="flex items-center gap-3" id="auto-restart-form">
+        <input type="hidden" name="auto_restart" id="auto-restart-value" value="{% if server.auto_restart %}true{% else %}false{% endif %}">
+        <label class="toggle">
+            <input type="checkbox" id="auto-restart-toggle" {% if server.auto_restart %}checked{% endif %} onchange="handleAutoRestart(event)">
+            <span class="toggle-track"></span>
+            <span class="toggle-knob"></span>
+        </label>
+        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-auto-restart", lang="en-US") }}</span>
+    </form>
+</div>
+
 <div class="bg-white border border-gray-200 rounded-lg p-6">
     <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{ t(key="servers-boot-script", lang="en-US") }}</h2>
     <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="servers-boot-script-help", lang="en-US") }}</p>
@@ -167,4 +182,13 @@
     connectToCommand({{ latest_run.id }}, "{{ latest_run.status }}");
 </script>
 {% endif %}
+<script>
+function handleAutoRestart(event) {
+    var checkbox = document.getElementById('auto-restart-toggle');
+    var hidden = document.getElementById('auto-restart-value');
+    hidden.value = checkbox.checked ? 'true' : 'false';
+    var form = document.getElementById('auto-restart-form');
+    if (form) form.requestSubmit();
+}
+</script>
 {% endblock %}

@@ -169,8 +169,14 @@ async fn stream_log(ctx: loco_rs::app::AppContext, socket: SocketRef, run_id: i3
 
     let runner = CommandRunner::new(&ctx);
     let poll_interval = tokio::time::Duration::from_millis(500);
-    let mut current_offset: u64 = 0;
 
+    // Start from the current file size so we only emit new content.
+    // The template already renders existing log content via {{ log_content }}.
+    let mut current_offset: u64 = model
+        .log_path
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map_or(0, |m| m.len());
     loop {
         // Read new content from the log file
         match runner.tail(run_id, Some(current_offset)).await {

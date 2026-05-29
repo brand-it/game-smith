@@ -108,3 +108,8 @@ status-pending = Pending
 status-installing = Installing
 status-installed = Installed
 status-error = Error
+
+# Server settings
+servers-settings = Settings
+servers-auto-restart = Auto-Restart
+servers-auto-restart-help = Automatically restart the server if it crashes.

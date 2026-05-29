@@ -1,0 +1,30 @@
+/* Reusable UI components. Imported by tailwind.css so Tailwind utilities are available. */
+
+/* iOS-style toggle switch */
+.toggle {
+  @apply relative inline-flex h-6 w-11 cursor-pointer rounded-full;
+}
+
+.toggle input[type="checkbox"] {
+  @apply absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0;
+}
+
+.toggle .toggle-track {
+  @apply absolute inset-0 rounded-full bg-gray-200 transition-colors duration-200;
+}
+
+.toggle input:checked ~ .toggle-track {
+  @apply bg-blue-600;
+}
+
+.toggle .toggle-knob {
+  @apply pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200;
+}
+
+.toggle input:checked ~ .toggle-knob {
+  @apply translate-x-5;
+}
+
+.toggle input:focus-visible ~ .toggle-track {
+  @apply ring-4 ring-blue-100;
+}
