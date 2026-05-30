@@ -354,10 +354,15 @@ impl GameServerInstaller {
         let runner = CommandRunner::new(&self.ctx);
 
         let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
-            // Use user-defined boot script
+            // Use user-defined boot script with platform-appropriate shell
+            let (shell, flag) = if cfg!(target_os = "windows") {
+                ("cmd.exe", "/c")
+            } else {
+                ("/bin/sh", "-c")
+            };
             (
-                "/bin/sh".to_string(),
-                vec!["-c".to_string(), script.clone()],
+                shell.to_string(),
+                vec![flag.to_string(), script.clone()],
                 Some(server.install_dir.clone()),
                 Some(format!("Start {}", server.name)),
             )
@@ -403,7 +408,9 @@ impl GameServerInstaller {
     /// Checks common server binary names for popular game servers.
     #[must_use]
     pub fn find_server_executable(install_dir: &std::path::Path) -> Option<PathBuf> {
-        let candidates = [
+        // Linux: executables identified by permissions, not extension
+        #[cfg(target_os = "linux")]
+        let primary_candidates = [
             "srcds_run",
             "srcds",
             "hl_linux",
@@ -411,18 +418,33 @@ impl GameServerInstaller {
             "server",
             "game-server",
         ];
+        // Windows: check .exe variants, including Windows-specific names
+        #[cfg(target_os = "windows")]
+        let primary_candidates = [
+            "srcds.exe",
+            "srcds_run.exe",
+            "hl.exe",
+            "hlds.exe",
+            "hlds_run.exe",
+            "server.exe",
+        ];
 
-        for candidate in &candidates {
+        for candidate in &primary_candidates {
             let path = install_dir.join(candidate);
             if path.exists() {
                 return Some(path);
             }
         }
 
-        // On Windows, also check .exe files
-        #[cfg(target_os = "windows")]
-        for candidate in &candidates {
-            let path = install_dir.join(format!("{candidate}.exe"));
+        // Fallback: check remaining variants (e.g. .exe on Linux for cross-platform installs)
+        let fallback = [
+            "srcds_run.exe",
+            "srcds.exe",
+            "server.exe",
+            "game-server.exe",
+        ];
+        for candidate in &fallback {
+            let path = install_dir.join(candidate);
             if path.exists() {
                 return Some(path);
             }

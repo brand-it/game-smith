@@ -6,8 +6,12 @@ use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+use tokio::io::AsyncRead;
 use tokio::process::Command;
 
 use crate::data::steamcmd::{set_shared_store, SteamCmdHealthStatus};
@@ -20,6 +24,10 @@ pub struct CommandExecWorker {
 
 /// Delay before auto-restarting a game server process (seconds).
 const AUTO_RESTART_DELAY_SECS: u64 = 5;
+
+/// Windows `CREATE_NO_WINDOW` flag to suppress console windows for spawned processes.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 impl CommandExecWorker {
     /// Load the run record and verify it is still in "running" state.
@@ -342,29 +350,10 @@ impl CommandExecWorker {
 
         cmd.kill_on_drop(true);
 
-        if let Some(dir) = &model.working_dir {
-            cmd.current_dir(dir);
-        }
-        if let Some(ref env_json) = model.env {
-            if let Ok(variables) =
-                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
-            {
-                for (key, value) in variables {
-                    cmd.env(key, value);
-                }
-            }
-        }
+        Self::configure_common(&mut cmd, model);
 
         let mut child = cmd.spawn().map_err(|e| {
-            let ctx = self.ctx.clone();
-            let rid = run_id;
-            let is_hc = Self::is_health_check(model);
-            let msg = e.to_string();
-            let kind = e.kind();
-            tokio::spawn(async move {
-                Self::_log_spawn_failed(&ctx, rid, is_hc, &msg, kind).await;
-            });
-            loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+            Self::handle_spawn_error(&self.ctx, run_id, Self::is_health_check(model), &e)
         })?;
 
         if let Some(pid) = child.id() {
@@ -372,25 +361,9 @@ impl CommandExecWorker {
         }
 
         // Stream PTY master → log file
-        let log_path = model.log_path.clone();
-        if let Some(ref lp) = log_path {
-            let log_file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(lp)
-                .ok();
-            if let Some(lf) = log_file {
-                let master = tokio::fs::File::from_std(master);
-                let log_file = tokio::fs::File::from_std(lf);
-                let lp = lp.clone();
-                tokio::spawn(async move {
-                    let mut master = tokio::io::BufReader::new(master);
-                    let mut log_file = log_file;
-                    if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
-                        tracing::warn!(%lp, error = %e, "PTY reader failed");
-                    }
-                });
-            }
+        if let Some(ref lp) = model.log_path {
+            let master = tokio::fs::File::from_std(master);
+            Self::spawn_reader(lp, master);
         }
 
         let status = child
@@ -415,58 +388,27 @@ impl CommandExecWorker {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
         cmd.kill_on_drop(true);
+        cmd.creation_flags(CREATE_NO_WINDOW);
 
-        if let Some(dir) = &model.working_dir {
-            cmd.current_dir(dir);
-        }
-        if let Some(ref env_json) = model.env {
-            if let Ok(variables) =
-                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
-            {
-                for (key, value) in variables {
-                    cmd.env(key, value);
-                }
-            }
-        }
+        Self::configure_common(&mut cmd, model);
 
         let mut child = cmd.spawn().map_err(|e| {
-            let ctx = self.ctx.clone();
-            let rid = run_id;
-            let is_hc = Self::is_health_check(model);
-            let msg = e.to_string();
-            let kind = e.kind();
-            tokio::spawn(async move {
-                Self::_log_spawn_failed(&ctx, rid, is_hc, &msg, kind).await;
-            });
-            loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+            Self::handle_spawn_error(&self.ctx, run_id, Self::is_health_check(model), &e)
         })?;
 
         if let Some(pid) = child.id() {
             self.store_pid(run_id, pid).await;
         }
 
-        // Stream stdout → log file
-        let log_path = model.log_path.clone();
-        if let Some(ref lp) = log_path {
-            let log_file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(lp)
-                .ok();
-            if let Some(lf) = log_file {
-                let log_file = tokio::fs::File::from_std(lf);
-                let lp = lp.clone();
-                if let Some(stdout) = child.stdout.take() {
-                    tokio::spawn(async move {
-                        let mut stdout = tokio::io::BufReader::new(stdout);
-                        if let Err(e) = tokio::io::copy_buf(&mut stdout, &mut log_file).await {
-                            tracing::warn!(%lp, error = %e, "stdout pipe reader failed");
-                        }
-                    });
-                }
+        // Stream stdout and stderr → log file
+        if let Some(ref lp) = model.log_path {
+            if let Some(stdout) = child.stdout.take() {
+                Self::spawn_reader(lp, stdout);
+            }
+            if let Some(stderr) = child.stderr.take() {
+                Self::spawn_reader(lp, stderr);
             }
         }
-        let _ = child.stderr.take();
 
         let status = child
             .wait()
@@ -487,6 +429,65 @@ impl CommandExecWorker {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Apply platform-agnostic command configuration: working directory and
+    /// environment variables from the [`CommandRunModel`].
+    fn configure_common(cmd: &mut Command, model: &CommandRunModel) {
+        if let Some(dir) = &model.working_dir {
+            cmd.current_dir(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(key, value);
+                }
+            }
+        }
+    }
+
+    /// Handle spawn failure: log the error asynchronously and return a
+    /// [`loco_rs::Error`].
+    fn handle_spawn_error(
+        ctx: &AppContext,
+        run_id: i32,
+        is_health_check: bool,
+        e: &io::Error,
+    ) -> loco_rs::Error {
+        let ctx = ctx.clone();
+        let rid = run_id;
+        let msg = e.to_string();
+        let kind = e.kind();
+        tokio::spawn(async move {
+            Self::_log_spawn_failed(&ctx, rid, is_health_check, &msg, kind).await;
+        });
+        loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+    }
+
+    /// Spawn a background task that copies output from an [`AsyncRead`] stream
+    /// into the run's log file. Used for PTY master on Linux and piped
+    /// stdout/stderr on Windows.
+    fn spawn_reader<R>(log_path: &str, reader: R)
+    where
+        R: AsyncRead + Send + 'static,
+    {
+        let lp = log_path.to_string();
+        if let Ok(log_file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+        {
+            let log_file = tokio::fs::File::from_std(log_file);
+            tokio::spawn(async move {
+                let mut reader = Box::pin(tokio::io::BufReader::new(reader));
+                let mut log_file = log_file;
+                if let Err(e) = tokio::io::copy_buf(&mut reader.as_mut(), &mut log_file).await {
+                    tracing::warn!(%lp, error = %e, "log reader failed");
+                }
+            });
+        }
     }
 
     /// Main execution loop: spawn the process, wait for it, auto-restart if
