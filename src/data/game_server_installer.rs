@@ -18,6 +18,8 @@ pub enum GameServerError {
     CreateDir(std::io::Error),
     /// Failed to write the `SteamCMD` script file.
     WriteScript(std::io::Error),
+    /// Failed to write the boot script `.bat` file.
+    WriteBootScript(std::io::Error),
     /// Failed to execute the installation command.
     Execute(ModelError),
     /// The game server record was not found.
@@ -32,6 +34,7 @@ impl std::fmt::Display for GameServerError {
             Self::SteamCmdNotInstalled => write!(f, "SteamCMD is not installed"),
             Self::CreateDir(e) => write!(f, "failed to create install directory: {e}"),
             Self::WriteScript(e) => write!(f, "failed to write SteamCMD script: {e}"),
+            Self::WriteBootScript(e) => write!(f, "failed to write boot script: {e}"),
             Self::Execute(e) => write!(f, "failed to execute installation: {e}"),
             Self::NotFound => write!(f, "game server not found"),
             Self::SteamCredentials(e) => write!(f, "failed to decrypt Steam credentials: {e}"),
@@ -354,6 +357,17 @@ impl GameServerInstaller {
         let runner = CommandRunner::new(&self.ctx);
 
         let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
+            #[cfg(target_os = "windows")]
+            let (command, args) = {
+                let bat_path = Self::write_boot_script_batch(&server.install_dir, script)
+                    .map_err(GameServerError::WriteBootScript)?;
+                (
+                    "cmd.exe".to_string(),
+                    vec!["/C".to_string(), bat_path.to_string_lossy().to_string()],
+                )
+            };
+
+            #[cfg(not(target_os = "windows"))]
             let (command, args) = Self::boot_script_command(script);
             (
                 command,
@@ -515,6 +529,17 @@ impl GameServerInstaller {
         Ok(())
     }
 
+    /// Writes the boot script to a `.bat` file and returns the path.
+    ///
+    /// On Windows, passing multiline or quoted scripts inline to `cmd.exe /C`
+    /// is fragile. Writing to a file first avoids quoting issues.
+    #[cfg(target_os = "windows")]
+    fn write_boot_script_batch(install_dir: &str, script: &str) -> Result<PathBuf, std::io::Error> {
+        let bat_path = PathBuf::from(install_dir).join("game-smith-start.bat");
+        let content = format!("@echo off\r\n{script}");
+        std::fs::write(&bat_path, content)?;
+        Ok(bat_path)
+    }
     /// Returns the shell command and arguments for executing a boot script.
     ///
     /// On Windows, uses `cmd.exe /C <script>`.
@@ -701,10 +726,25 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn test_boot_script_command_windows() {
-        let (cmd, args) = GameServerInstaller::boot_script_command("server.exe -port 27015");
-        assert_eq!(cmd, "cmd.exe");
-        assert_eq!(args, ["/C", "server.exe -port 27015"]);
+    fn test_write_boot_script_batch() {
+        let dir = std::env::temp_dir().join(format!("game-smith-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("failed to create temp dir");
+        let dir_str = dir.to_string_lossy().to_string();
+
+        let script = "start /B server.exe -port 27015\r\necho done";
+        let bat_path = GameServerInstaller::write_boot_script_batch(&dir_str, script)
+            .expect("failed to write batch file");
+
+        assert!(bat_path.exists(), "batch file was not created");
+        assert_eq!(bat_path.file_name().unwrap(), "game-smith-start.bat");
+
+        let content = std::fs::read_to_string(&bat_path).expect("failed to read batch file");
+        assert!(content.starts_with("@echo off\r\n"));
+        assert!(content.contains("start /B server.exe -port 27015"));
+        assert!(content.contains("echo done"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[cfg(not(target_os = "windows"))]
