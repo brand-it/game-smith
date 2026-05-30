@@ -1,3 +1,7 @@
+/// Background worker that spawns game server processes and streams their output to log files.
+///
+/// On Linux, uses PTY-based streaming via `openpty` for proper terminal behavior.
+/// On Windows, uses piped stdout/stderr with `CREATE_NO_WINDOW` to suppress console windows.
 use async_trait::async_trait;
 #[cfg(target_os = "linux")]
 use libc::openpty;
