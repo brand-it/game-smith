@@ -485,9 +485,9 @@ impl CommandExecWorker {
         {
             let log_file = tokio::fs::File::from_std(log_file);
             tokio::spawn(async move {
-                let mut reader = Box::pin(tokio::io::BufReader::new(reader));
+                let mut reader = Box::pin(reader);
                 let mut log_file = log_file;
-                if let Err(e) = tokio::io::copy_buf(&mut reader.as_mut(), &mut log_file).await {
+                if let Err(e) = tokio::io::copy(&mut reader, &mut log_file).await {
                     tracing::warn!(%lp, error = %e, "log reader failed");
                 }
             });

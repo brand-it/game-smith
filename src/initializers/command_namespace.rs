@@ -168,7 +168,7 @@ async fn stream_log(ctx: loco_rs::app::AppContext, socket: SocketRef, run_id: i3
     }
 
     let runner = CommandRunner::new(&ctx);
-    let poll_interval = tokio::time::Duration::from_millis(500);
+    let poll_interval = tokio::time::Duration::from_millis(250);
 
     // Start from the current file size so we only emit new content.
     // The template already renders existing log content via {{ log_content }}.

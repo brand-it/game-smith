@@ -354,15 +354,10 @@ impl GameServerInstaller {
         let runner = CommandRunner::new(&self.ctx);
 
         let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
-            // Use user-defined boot script with platform-appropriate shell
-            let (shell, flag) = if cfg!(target_os = "windows") {
-                ("cmd.exe", "/c")
-            } else {
-                ("/bin/sh", "-c")
-            };
+            let (command, args) = Self::boot_script_command(script);
             (
-                shell.to_string(),
-                vec![flag.to_string(), script.clone()],
+                command,
+                args,
                 Some(server.install_dir.clone()),
                 Some(format!("Start {}", server.name)),
             )
@@ -518,6 +513,25 @@ impl GameServerInstaller {
 
         info!(server_id = server.id, "Game server record deleted");
         Ok(())
+    }
+
+    /// Returns the shell command and arguments for executing a boot script.
+    ///
+    /// On Windows, uses `cmd.exe /C <script>`.
+    /// On other platforms, uses `/bin/sh -c <script>`.
+    #[must_use]
+    fn boot_script_command(script: &str) -> (String, Vec<String>) {
+        #[cfg(target_os = "windows")]
+        return (
+            "cmd.exe".to_string(),
+            vec!["/C".to_string(), script.to_string()],
+        );
+
+        #[cfg(not(target_os = "windows"))]
+        (
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), script.to_string()],
+        )
     }
 }
 
@@ -683,5 +697,21 @@ mod tests {
 
         assert!(script.contains("login anonymous"));
         assert!(script.contains("@NoPromptForPassword 1"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_boot_script_command_windows() {
+        let (cmd, args) = GameServerInstaller::boot_script_command("server.exe -port 27015");
+        assert_eq!(cmd, "cmd.exe");
+        assert_eq!(args, ["/C", "server.exe -port 27015"]);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_boot_script_command_unix() {
+        let (cmd, args) = GameServerInstaller::boot_script_command("./srcds_run -game csgo");
+        assert_eq!(cmd, "/bin/sh");
+        assert_eq!(args, ["-c", "./srcds_run -game csgo"]);
     }
 }
