@@ -2,16 +2,22 @@
 /// files.
 ///
 /// On Linux, uses PTY-based streaming via `libc::openpty` for proper terminal behavior.
-/// On Windows, uses piped stdio via `tokio::process::Command`.
+/// On Windows, uses `ConPTY` via `portable-pty` with VT cursor-position response to avoid hangs.
 use async_trait::async_trait;
 #[cfg(target_os = "linux")]
 use libc::openpty;
 use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
+#[cfg(target_os = "windows")]
+use portable_pty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
+#[cfg(target_os = "windows")]
+use std::io::Read;
+#[cfg(target_os = "windows")]
+use std::io::Write;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
 use tokio::io::AsyncRead;
@@ -379,84 +385,162 @@ impl CommandExecWorker {
         Ok(Self::determine_status(status))
     }
 
-    /// Spawn a single process and wait for it to exit (Windows).
+    /// Spawn a single process and wait for it to exit (Windows, ConPTY).
     ///
-    /// Uses plain piped stdio instead of ConPTY. ConPTY causes programs like
-    /// SteamCMD to send terminal escape queries (e.g. `ESC[6n`) that expect a
-    /// response — with no one answering, the child hangs. Piped stdio avoids
-    /// the problem entirely and is sufficient for capturing output.
+    /// Uses `portable-pty` to open a ConPTY pair. This is required because:
+    ///
+    /// - With plain pipes, the Windows CRT detects a non-TTY and switches to
+    ///   64 KB full-buffering, so SteamCMD output is invisible until the process
+    ///   exits (or the buffer fills).
+    /// - ConPTY allocates an invisible pseudo-console that satisfies the CRT's
+    ///   TTY check, so SteamCMD line-buffers and output flows promptly.
+    /// - ConPTY suppresses the visible console window automatically.
+    ///
+    /// The one wrinkle: SteamCMD probes the terminal size by sending `ESC[6n`
+    /// (ANSI Device Status Report / cursor-position query) and blocks until it
+    /// receives a `ESC[row;colR` response. The drain thread watches for this
+    /// sequence and immediately writes the reply back through the master writer,
+    /// so the child never stalls.
     ///
     /// Shutdown on demand works via `TerminateProcess` against the stored PID
-    /// (see `kill_pid`). The `kill_on_drop` flag ensures cleanup if the worker
-    /// task is dropped before the child exits.
+    /// (see `kill_pid`). The PTY pair is dropped after the child exits, which
+    /// closes the pseudo-console and signals EOF to the drain thread.
     #[cfg(target_os = "windows")]
     async fn spawn_one(
         &self,
         run_id: i32,
         model: &CommandRunModel,
     ) -> Result<(CommandStatus, Option<i32>)> {
-        let mut cmd = Command::new(&model.command);
-        cmd.args(&Self::resolve_args(model));
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-        cmd.kill_on_drop(true);
-        Self::configure_common(&mut cmd, model);
+        let cmd_args = Self::resolve_args(model);
 
-        let mut child = cmd.spawn().map_err(|e| {
+        // Open a ConPTY pair. The child sees a real terminal (no console window
+        // appears — ConPTY creates a headless pseudo-console).
+        let pty_system = portable_pty::native_pty_system();
+        let pair = pty_system
+            .openpty(portable_pty::PtySize {
+                rows: 25,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| loco_rs::Error::string(&format!("failed to create pty: {e}")))?;
+
+        let mut cmd = portable_pty::CommandBuilder::new(&model.command);
+        cmd.args(&cmd_args);
+        if let Some(dir) = &model.working_dir {
+            cmd.cwd(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(&key, &value);
+                }
+            }
+        }
+
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
             Self::handle_spawn_error(
                 &self.ctx,
                 run_id,
                 Self::is_health_check(model),
                 &e,
-                e.kind(),
+                io::ErrorKind::Other,
             )
         })?;
 
-        if let Some(pid) = child.id() {
+        if let Some(pid) = child.process_id() {
             self.store_pid(run_id, pid).await;
         }
 
-        // Merge stdout + stderr into the log file via async copy tasks.
-        // Both pipes are wired up before we await the child so neither
-        // can fill up and deadlock the process.
-        if let Some(ref lp) = model.log_path {
-            if let Some(stdout) = child.stdout.take() {
-                Self::spawn_reader(lp, stdout);
+        // Obtain a reader and a writer for the PTY master.
+        // Reader: receives the child's output.
+        // Writer: sends input to the child (used to reply to VT queries).
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
+        let mut writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| loco_rs::Error::string(&format!("failed to take pty writer: {e}")))?;
+
+        let log_path = model.log_path.clone();
+
+        // Drain thread: read PTY output, reply to ESC[6n, write to log file.
+        //
+        // SteamCMD sends ESC[6n (ANSI DSR — cursor position request) to probe
+        // the terminal and blocks until it receives ESC[row;colR back. We reply
+        // immediately with ESC[1;1R so the child never stalls.
+        let drain_handle = std::thread::spawn(move || {
+            // ESC[6n  — DSR cursor-position query sent by the child.
+            const DSR_QUERY: &[u8] = b"\x1b[6n";
+            // ESC[1;1R — CPR response: row 1, column 1.
+            const CPR_REPLY: &[u8] = b"\x1b[1;1R";
+
+            let mut log_writer: Option<std::io::BufWriter<std::fs::File>> =
+                log_path.as_deref().and_then(|p| {
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(p)
+                        .ok()
+                        .map(std::io::BufWriter::new)
+                });
+
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let chunk = &buf[..n];
+                        // Reply to cursor-position queries before writing to log
+                        // so the escape sequence itself doesn't pollute output.
+                        if chunk.windows(DSR_QUERY.len()).any(|w| w == DSR_QUERY) {
+                            let _ = writer.write_all(CPR_REPLY);
+                        }
+                        if let Some(ref mut w) = log_writer {
+                            let _ = w.write_all(chunk);
+                            let _ = w.flush();
+                        }
+                    }
+                    Err(_) => break,
+                }
             }
-            if let Some(stderr) = child.stderr.take() {
-                Self::spawn_reader(lp, stderr);
+        });
+
+        // Poll for child exit non-blocking so the drain thread can run
+        // concurrently and keep the PTY buffer empty.
+        let exit_status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                Err(e) => {
+                    return Err(loco_rs::Error::string(&format!(
+                        "failed to poll process status: {e}"
+                    )));
+                }
             }
+        };
+
+        // Drop the PTY pair to close the ConPTY — this signals EOF to the
+        // drain thread's reader so it exits cleanly.
+        drop(pair);
+        let _ = drain_handle.join();
+
+        Ok(Self::determine_pty_status(exit_status))
+    }
+
+    /// Map a [`portable_pty::ExitStatus`] to our internal status tuple.
+    #[cfg(target_os = "windows")]
+    fn determine_pty_status(status: portable_pty::ExitStatus) -> (CommandStatus, Option<i32>) {
+        if status.success() {
+            (CommandStatus::Completed, Some(0))
         } else {
-            // No log path — still drain both pipes so the child never blocks
-            // on a full pipe buffer.
-            if let Some(stdout) = child.stdout.take() {
-                tokio::spawn(async move {
-                    tokio::io::copy(
-                        &mut tokio::io::BufReader::new(stdout),
-                        &mut tokio::io::sink(),
-                    )
-                    .await
-                    .ok();
-                });
-            }
-            if let Some(stderr) = child.stderr.take() {
-                tokio::spawn(async move {
-                    tokio::io::copy(
-                        &mut tokio::io::BufReader::new(stderr),
-                        &mut tokio::io::sink(),
-                    )
-                    .await
-                    .ok();
-                });
-            }
+            let code = status.exit_code() as i32;
+            (CommandStatus::Failed, Some(code))
         }
-
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
-
-        Ok(Self::determine_status(status))
     }
 
     /// Parse args from the `SeaORM` JSON array.
