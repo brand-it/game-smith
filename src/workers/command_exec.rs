@@ -469,45 +469,17 @@ impl CommandExecWorker {
         let log_path = model.log_path.clone();
 
         // Drain thread: read PTY output, reply to ESC[6n, write to log file.
-        //
-        // SteamCMD sends ESC[6n (ANSI DSR — cursor position request) to probe
-        // the terminal and blocks until it receives ESC[row;colR back. We reply
-        // immediately with ESC[1;1R so the child never stalls.
+        // See drain_pty_output for the full description of the algorithm.
         let drain_handle = std::thread::spawn(move || {
-            // ESC[6n  — DSR cursor-position query sent by the child.
-            const DSR_QUERY: &[u8] = b"\x1b[6n";
-            // ESC[1;1R — CPR response: row 1, column 1.
-            const CPR_REPLY: &[u8] = b"\x1b[1;1R";
-
-            let mut log_writer: Option<std::io::BufWriter<std::fs::File>> =
-                log_path.as_deref().and_then(|p| {
-                    std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(p)
-                        .ok()
-                        .map(std::io::BufWriter::new)
-                });
-
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let chunk = &buf[..n];
-                        // Reply to cursor-position queries before writing to log
-                        // so the escape sequence itself doesn't pollute output.
-                        if chunk.windows(DSR_QUERY.len()).any(|w| w == DSR_QUERY) {
-                            let _ = writer.write_all(CPR_REPLY);
-                        }
-                        if let Some(ref mut w) = log_writer {
-                            let _ = w.write_all(chunk);
-                            let _ = w.flush();
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
+            let log_writer = log_path.as_deref().and_then(|p| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(p)
+                    .ok()
+                    .map(std::io::BufWriter::new)
+            });
+            drain_pty_output(reader, writer, log_writer);
         });
 
         // Poll for child exit non-blocking so the drain thread can run
@@ -685,5 +657,222 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         self.maybe_update_server_status(run_id, final_status).await;
 
         Ok(())
+    }
+}
+
+/// Drain PTY master output: forward to log file and reply to ANSI DSR queries.
+///
+/// Reads `reader` until EOF, writing non-DSR bytes to `log_writer`. When an
+/// `ESC[6n` (Device Status Report / cursor-position query) is detected — even
+/// across read-call boundaries — an `ESC[1;1R` CPR reply is written to `writer`
+/// so the child process never stalls waiting for a terminal response.
+///
+/// The DSR byte sequence is stripped from the log so raw escape bytes do not
+/// appear in the visible output.
+///
+/// # Arguments
+/// * `reader`     — source of PTY output (from `portable_pty` or a pipe in tests).
+/// * `writer`     — sink for CPR replies (to `portable_pty` master writer or pipe).
+/// * `log_writer` — optional buffered sink for cleaned log output.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn drain_pty_output(
+    mut reader: impl std::io::Read,
+    mut writer: impl std::io::Write,
+    mut log_writer: Option<impl std::io::Write>,
+) {
+    // ESC[6n  — ANSI DSR cursor-position query sent by child.
+    const DSR: &[u8] = b"\x1b[6n";
+    // ESC[1;1R — CPR response: row 1, col 1.
+    const CPR: &[u8] = b"\x1b[1;1R";
+    // Ring buffer to detect DSR split across read boundaries.
+    // Holds up to DSR.len() - 1 bytes of unconfirmed suffix from the previous chunk.
+    let mut pending: Vec<u8> = Vec::with_capacity(DSR.len() - 1);
+
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                // Combine leftover tail from last chunk with new data so we
+                // can detect DSR sequences that straddle a read boundary.
+                let mut window: Vec<u8> = pending.clone();
+                window.extend_from_slice(&buf[..n]);
+
+                let mut log_out: Vec<u8> = Vec::with_capacity(window.len());
+                let mut i = 0usize;
+                while i < window.len() {
+                    // Check if DSR starts at position i.
+                    if window[i..].starts_with(DSR) {
+                        // Send CPR reply; swallow the DSR bytes from the log.
+                        let _ = writer.write_all(CPR);
+                        i += DSR.len();
+                    } else if DSR.starts_with(&window[i..]) && i + DSR.len() > window.len() {
+                        // Possible DSR prefix at the very end of the window —
+                        // don't write it to the log yet; carry it forward.
+                        break;
+                    } else {
+                        log_out.push(window[i]);
+                        i += 1;
+                    }
+                }
+                // Save whatever we didn't consume as the new pending tail.
+                pending = window[i..].to_vec();
+
+                if let Some(ref mut w) = log_writer {
+                    let _ = w.write_all(&log_out);
+                }
+            }
+        }
+    }
+    // Flush any unconsumed pending bytes (partial non-DSR tail) to the log.
+    if !pending.is_empty() {
+        if let Some(ref mut w) = log_writer {
+            let _ = w.write_all(&pending);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    /// Run drain_pty_output with in-memory reader/writer and collect results.
+    fn drain(input: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+        drain_pty_output(input, &mut replies, Some(&mut log));
+        (replies, log)
+    }
+
+    // ── DSR reply ────────────────────────────────────────────────────────────
+
+    /// A lone ESC[6n must produce exactly one ESC[1;1R reply.
+    #[test]
+    fn dsr_single_produces_reply() {
+        let (replies, _log) = drain(b"\x1b[6n");
+        assert_eq!(replies, b"\x1b[1;1R", "expected CPR reply");
+    }
+
+    /// Two DSR queries in one read must produce two CPR replies.
+    #[test]
+    fn dsr_double_produces_two_replies() {
+        let (replies, _log) = drain(b"\x1b[6n\x1b[6n");
+        assert_eq!(replies, b"\x1b[1;1R\x1b[1;1R");
+    }
+
+    // ── DSR filtered from log ─────────────────────────────────────────────────
+
+    /// ESC[6n bytes must NOT appear in the log output.
+    #[test]
+    fn dsr_not_written_to_log() {
+        let (_replies, log) = drain(b"hello\x1b[6nworld");
+        assert_eq!(log, b"helloworld", "DSR must be stripped from log");
+        assert!(!log.contains(&0x1b), "no escape bytes in log");
+    }
+
+    /// Pure log content (no DSR) is written through unmodified.
+    #[test]
+    fn plain_text_passes_through() {
+        let (_replies, log) = drain(b"Loading Steam API...OK\n");
+        assert_eq!(log, b"Loading Steam API...OK\n");
+    }
+
+    // ── split-read detection ──────────────────────────────────────────────────
+
+    /// ESC[6n split as [ESC] then [[6n] across two separate reads must still
+    /// produce one CPR reply and no DSR bytes in the log.
+    #[test]
+    fn dsr_split_across_reads_produces_reply() {
+        // Simulate two reads by concatenating with a sentinel that forces
+        // the ring buffer path: feed bytes one at a time.
+        let input = b"\x1b[6n";
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+
+        // Use a cursor over byte-at-a-time chunks via a custom reader.
+        struct ByteByByte<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+        impl std::io::Read for ByteByByte<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() {
+                    return Ok(0);
+                }
+                buf[0] = self.data[self.pos];
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+
+        drain_pty_output(
+            ByteByByte {
+                data: input,
+                pos: 0,
+            },
+            &mut replies,
+            Some(&mut log),
+        );
+
+        assert_eq!(replies, b"\x1b[1;1R", "split DSR must still get a reply");
+        assert!(!log.contains(&0x1b), "split DSR must not appear in log");
+        assert!(log.is_empty(), "no other bytes to log");
+    }
+
+    /// ESC[6n split as [ESC[] then [6n] across two reads (2+2 byte split).
+    #[test]
+    fn dsr_split_two_plus_two_produces_reply() {
+        let input = b"AB\x1b[6nCD";
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+
+        // Feed in two-byte chunks.
+        struct TwoBytes<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+        impl std::io::Read for TwoBytes<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() {
+                    return Ok(0);
+                }
+                let n = std::cmp::min(2, self.data.len() - self.pos);
+                buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+                self.pos += n;
+                Ok(n)
+            }
+        }
+
+        drain_pty_output(
+            TwoBytes {
+                data: input,
+                pos: 0,
+            },
+            &mut replies,
+            Some(&mut log),
+        );
+
+        assert_eq!(replies, b"\x1b[1;1R");
+        assert_eq!(log, b"ABCD", "surrounding bytes intact, DSR stripped");
+    }
+
+    // ── no DSR, no reply ─────────────────────────────────────────────────────
+
+    /// Output with no DSR query must produce no replies.
+    #[test]
+    fn no_dsr_no_reply() {
+        let (replies, log) = drain(b"Waiting for confirmation...\n");
+        assert!(replies.is_empty());
+        assert_eq!(log, b"Waiting for confirmation...\n");
+    }
+
+    /// Empty input must produce no replies and empty log.
+    #[test]
+    fn empty_input() {
+        let (replies, log) = drain(b"");
+        assert!(replies.is_empty());
+        assert!(log.is_empty());
     }
 }
