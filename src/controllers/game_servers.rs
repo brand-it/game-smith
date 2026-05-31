@@ -194,7 +194,7 @@ pub async fn start_server(
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
 
-    if game_servers::is_alive(&ctx, &server).await {
+    if game_servers::is_alive(&ctx, &server).await || server.status() == ServerStatus::Installing {
         return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
     }
 
@@ -256,6 +256,11 @@ pub async fn update_server(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+
+    // Don't double-launch if an install/update is already in progress.
+    if server.status() == ServerStatus::Installing {
+        return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
+    }
 
     let installer = GameServerInstaller::new(&ctx);
     let _run = installer
