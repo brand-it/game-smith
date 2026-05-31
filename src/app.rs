@@ -51,12 +51,12 @@ impl Hooks for App {
         let config = Config {
             logger: loco_rs::config::Logger {
                 enable: true,
-                pretty_backtrace: true,
-                level: loco_rs::logger::LogLevel::Debug,
+                pretty_backtrace: false,
+                level: loco_rs::logger::LogLevel::Info,
                 file_appender: Some(loco_rs::config::LoggerFileAppender {
                     enable: true,
                     non_blocking: true,
-                    level: loco_rs::logger::LogLevel::Debug,
+                    level: loco_rs::logger::LogLevel::Info,
                     format: loco_rs::logger::Format::Json,
                     rotation: loco_rs::logger::Rotation::Daily,
                     dir: Some(logs_dir),
