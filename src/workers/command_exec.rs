@@ -453,7 +453,7 @@ impl CommandExecWorker {
                 .try_clone_reader()
                 .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
 
-            let (status, exit_code) = tokio::task::spawn_blocking(move || {
+            match tokio::task::spawn_blocking(move || {
                 // Spawn a thread to drain PTY output into the log file
                 let log_thread = std::thread::spawn(move || {
                     if let Ok(mut log_file) = std::fs::OpenOptions::new()
@@ -477,8 +477,11 @@ impl CommandExecWorker {
                 Ok(Self::determine_pty_status(exit_status))
             })
             .await
-            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?;
-            return Ok((status, exit_code));
+            {
+                Err(e) => return Err(loco_rs::Error::string(&format!("spawn_blocking panicked: {e}"))),
+                Ok(Err(e)) => return Err(e),
+                Ok(Ok((s, ec))) => return Ok((s, ec)),
+            }
         }
 
         // No log path — just wait for child
