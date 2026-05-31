@@ -445,56 +445,94 @@ impl CommandExecWorker {
             self.store_pid(run_id, pid).await;
         }
 
-        // Stream PTY master → log file, then wait for child (both sync I/O)
-        if let Some(ref lp) = model.log_path {
-            let log_path = lp.clone();
-            let mut reader = pair
-                .master
-                .try_clone_reader()
-                .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
+        // Clone reader for background drain — prevents PTY output buffer from
+        // filling up and deadlocking the child, regardless of whether a log
+        // file is configured.
+        let reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
 
-            match tokio::task::spawn_blocking(move || {
-                // Spawn a thread to drain PTY output into the log file
-                let log_thread = std::thread::spawn(move || {
-                    if let Ok(mut log_file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&log_path)
-                    {
-                        let mut writer = std::io::BufWriter::new(log_file);
-                        let _ = std::io::copy(&mut reader, &mut writer);
+        let log_path = model.log_path.clone();
+
+        // Run child in a blocking thread: poll exit status and drain PTY output
+        // in parallel.
+        tokio::task::spawn_blocking(move || {
+            // Background thread: continuously read from the PTY and write to the
+            // log file (if configured). Flushes after every chunk so the UI can
+            // see output promptly via its periodic file-poll.
+            let drain_handle = std::thread::spawn(move || {
+                let mut buf = [0u8; 4096];
+                let mut log_writer: Option<std::io::BufWriter<std::fs::File>> =
+                    log_path.as_deref().and_then(|p| {
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(p)
+                            .ok()
+                            .map(std::io::BufWriter::new)
+                    });
+
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break, // EOF
+                        Ok(n) => {
+                            if let Some(ref mut writer) = log_writer {
+                                let _ = writer.write_all(&buf[..n]);
+                                let _ = writer.flush();
+                            }
+                        }
+                        Err(_) => break,
                     }
-                });
-
-                // Wait for child to exit (sync — required by portable-pty)
-                let exit_status = child.wait().map_err(|e| {
-                    loco_rs::Error::string(&format!("failed to wait for process: {e}"))
-                })?;
-
-                // Ensure log thread has finished draining
-                let _ = log_thread.join();
-
-                Ok(Self::determine_pty_status(exit_status))
-            })
-            .await
-            {
-                Err(e) => {
-                    return Err(loco_rs::Error::string(&format!(
-                        "spawn_blocking panicked: {e}"
-                    )))
                 }
-                Ok(Err(e)) => return Err(e),
-                Ok(Ok((s, ec))) => return Ok((s, ec)),
+            });
+
+            // Poll for child exit using try_wait (non-blocking) so we don't block
+            // while the PTY output buffer is still being drained.
+            let exit_status = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status,
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    Err(e) => {
+                        return Err(loco_rs::Error::string(&format!(
+                            "failed to poll process status: {e}"
+                        )));
+                    }
+                }
+            };
+
+            // Drop the PTY pair to close the ConPTY — signals EOF to the drain
+            // thread's reader so it can exit cleanly.
+            drop(pair);
+
+            // Wait for the drain thread to finish with a timeout. Under normal
+            // conditions, ClosePseudoConsole closes the pipe's write end and the
+            // drain thread exits on EOF. The timeout guards against a Windows API
+            // bug where the write end is not closed.
+            let mut handle = Some(drain_handle);
+            let start = std::time::Instant::now();
+            let timeout = std::time::Duration::from_secs(5);
+            while let Some(h) = handle.as_ref() {
+                if !h.thread().is_alive() {
+                    break;
+                }
+                if start.elapsed() >= timeout {
+                    tracing::warn!(
+                        "drain thread did not exit within {:?}, orphaning it",
+                        timeout
+                    );
+                    handle.take();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
-        }
-
-        // No log path — just wait for child
-        let exit_status = tokio::task::spawn_blocking(move || child.wait())
-            .await
-            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?
-            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
-
-        Ok(Self::determine_pty_status(exit_status))
+            if let Some(h) = handle.take() {
+                let _ = h.join();
+            }
+            Ok(Self::determine_pty_status(exit_status))
+        })
+        .await
+        .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?
     }
 
     /// Parse args from the `SeaORM` JSON array.

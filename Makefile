@@ -1,5 +1,5 @@
 .PHONY: help setup setup-check dev watch \
-	test fmt fmt-check style lint qa \
+	test fmt fmt-check style lint qa check-windows \
 	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset
 
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "  style         Auto-fix formatting and lint issues"
 	@echo "  lint          Run clippy with strict rules"
 	@echo "  qa            Run fmt-check, lint, and test"
+	@echo "  check-windows Cross-compile check for Windows (requires mingw64-gcc)"
 	@echo ""
 	@echo "Migrations"
 	@echo "  migrate-gen   Generate new migration (NAME=create_games)"
@@ -73,8 +74,11 @@ lint:
 	cargo clippy -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
 
 qa:
-	@$(MAKE) fmt-check && $(MAKE) lint && $(MAKE) test
+	@$(MAKE) fmt-check && $(MAKE) lint && $(MAKE) test && \
+	(command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 && $(MAKE) check-windows || echo "check-windows skipped (install mingw64-gcc)")
 
+check-windows:
+	cargo check --target x86_64-pc-windows-gnu
 # ── Migrations ─────────────────────────────────────────────────────────
 
 migrate-gen:
