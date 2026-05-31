@@ -33,7 +33,11 @@ impl SteamCmdInstallWorker {
         // Write progress to log file if available
         if let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
             if let Some(ref log_path) = model.log_path {
-                let _ = tokio::fs::write(log_path, "Starting SteamCMD installation...\n").await;
+                if let Err(e) =
+                    tokio::fs::write(log_path, "Starting SteamCMD installation...\n").await
+                {
+                    tracing::warn!(run_id, log_path, error = %e, "failed to write install start marker to log");
+                }
             }
         }
 
@@ -50,9 +54,12 @@ impl SteamCmdInstallWorker {
                 // Mark run as completed
                 if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
-                    let _ = active
+                    if let Err(e) = active
                         .finish(&self.ctx, Some(0), CommandStatus::Completed)
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(run_id, error = %e, "failed to mark install run as completed in DB");
+                    }
                 }
             }
             Err(e) => {
@@ -61,17 +68,23 @@ impl SteamCmdInstallWorker {
                 // Write error to log file if available
                 if let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
                     if let Some(ref log_path) = model.log_path {
-                        let _ =
-                            tokio::fs::write(log_path, format!("Installation failed: {e}\n")).await;
+                        if let Err(e) =
+                            tokio::fs::write(log_path, format!("Installation failed: {e}\n")).await
+                        {
+                            tracing::warn!(run_id, log_path, error = %e, "failed to write install failure to log");
+                        }
                     }
                 }
 
                 // Mark run as failed
                 if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
-                    let _ = active
+                    if let Err(e) = active
                         .finish(&self.ctx, Some(1), CommandStatus::Failed)
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(run_id, error = %e, "failed to mark install run as failed in DB");
+                    }
                 }
             }
         }

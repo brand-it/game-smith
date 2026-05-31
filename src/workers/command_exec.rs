@@ -54,7 +54,9 @@ impl CommandExecWorker {
     async fn mark_spawn_failed(ctx: &AppContext, run_id: i32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
-            let _ = active.finish(ctx, Some(-1), CommandStatus::Failed).await;
+            if let Err(e) = active.finish(ctx, Some(-1), CommandStatus::Failed).await {
+                tracing::warn!(run_id, error = %e, "failed to mark run as spawn-failed in DB");
+            }
         }
     }
 
@@ -82,7 +84,9 @@ impl CommandExecWorker {
     async fn store_pid(&self, run_id: i32, pid: u32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
-            let _ = active.update_pid(&self.ctx, i64::from(pid)).await;
+            if let Err(e) = active.update_pid(&self.ctx, i64::from(pid)).await {
+                tracing::warn!(run_id, pid, error = %e, "failed to store PID in DB");
+            }
         }
     }
 
@@ -477,7 +481,6 @@ impl CommandExecWorker {
                     .append(true)
                     .open(p)
                     .ok()
-                    .map(std::io::BufWriter::new)
             });
             drain_pty_output(reader, writer, log_writer);
         });
@@ -704,7 +707,9 @@ pub(crate) fn drain_pty_output(
                     // Check if DSR starts at position i.
                     if window[i..].starts_with(DSR) {
                         // Send CPR reply; swallow the DSR bytes from the log.
-                        let _ = writer.write_all(CPR);
+                        if let Err(e) = writer.write_all(CPR) {
+                            tracing::warn!(error = %e, "failed to write CPR reply to PTY master");
+                        }
                         i += DSR.len();
                     } else if DSR.starts_with(&window[i..]) && i + DSR.len() > window.len() {
                         // Possible DSR prefix at the very end of the window —
@@ -719,7 +724,11 @@ pub(crate) fn drain_pty_output(
                 pending = window[i..].to_vec();
 
                 if let Some(ref mut w) = log_writer {
-                    let _ = w.write_all(&log_out);
+                    if let Err(e) = w.write_all(&log_out) {
+                        tracing::warn!(error = %e, "failed to write PTY output to log file");
+                    } else if let Err(e) = w.flush() {
+                        tracing::warn!(error = %e, "failed to flush PTY output to log file");
+                    }
                 }
             }
         }
@@ -727,7 +736,9 @@ pub(crate) fn drain_pty_output(
     // Flush any unconsumed pending bytes (partial non-DSR tail) to the log.
     if !pending.is_empty() {
         if let Some(ref mut w) = log_writer {
-            let _ = w.write_all(&pending);
+            if let Err(e) = w.write_all(&pending) {
+                tracing::warn!(error = %e, "failed to write final PTY bytes to log file");
+            }
         }
     }
 }
