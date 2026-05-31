@@ -78,7 +78,6 @@ windows = { version = "0.62", features = [
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }
-portable-pty = { version = "0.9" }
 [[bin]]
 name = "game-smith"
 path = "src/bin/main.rs"
