@@ -19,6 +19,52 @@ const BADGE_CLASSES = {
 };
 
 /**
+ * Steam Guard / 2FA phrases that indicate user action is needed.
+ * Matched case-insensitively against incoming log chunks.
+ */
+const STEAM_GUARD_PATTERNS = [
+  "Please confirm the login in the Steam Mobile app",
+  "Steam Guard code:",
+  "Two-factor code:",
+  "Enter the current code from your Steam Guard Mobile Authenticator",
+];
+
+/**
+ * Show the Steam Guard action-required banner.
+ * Safe to call multiple times — idempotent.
+ *
+ * @param {string} [message] - Optional message override for the detail line.
+ */
+function showSteamGuardBanner(message) {
+  const banner = document.getElementById("steam-guard-banner");
+  if (!banner) return;
+  if (message) {
+    const msgEl = document.getElementById("steam-guard-message");
+    if (msgEl) msgEl.textContent = message;
+  }
+  banner.classList.remove("hidden");
+}
+
+/**
+ * Check a log chunk for Steam Guard prompts and surface the banner if found.
+ *
+ * @param {string} text - Chunk of log output to inspect.
+ */
+function checkForSteamGuard(text) {
+  for (const pattern of STEAM_GUARD_PATTERNS) {
+    if (text.toLowerCase().includes(pattern.toLowerCase())) {
+      const isEmailCode = pattern.includes("Steam Guard code") || pattern.includes("Two-factor");
+      showSteamGuardBanner(
+        isEmailCode
+          ? "Enter your Steam Guard code in the Steam app or check your email."
+          : "Open the Steam Mobile app on your phone and approve the login request."
+      );
+      return;
+    }
+  }
+}
+
+/**
  * Connect to the Socket.IO /commands namespace and subscribe to a run's log.
  *
  * @param {number} runId - The command run ID to tail.
@@ -49,6 +95,8 @@ function connectToCommand(runId, initialStatus) {
       logEl.textContent += data;
       // Auto-scroll to bottom
       logEl.scrollTop = logEl.scrollHeight;
+      // Detect Steam Guard prompts and surface the action banner
+      checkForSteamGuard(data);
     }
   });
 
@@ -114,6 +162,14 @@ function disconnect() {
 
 // Clean up on page unload
 window.addEventListener("beforeunload", disconnect);
+
+// Check initial log content for Steam Guard prompts (page loaded mid-run or after)
+document.addEventListener("DOMContentLoaded", () => {
+  const logEl = document.getElementById("log-output");
+  if (logEl && logEl.textContent) {
+    checkForSteamGuard(logEl.textContent);
+  }
+});
 
 // Export for use in inline scripts
 if (typeof window !== "undefined") {
