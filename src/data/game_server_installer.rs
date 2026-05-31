@@ -310,6 +310,7 @@ impl GameServerInstaller {
             steam_username.as_deref(),
             steam_password.as_deref(),
         );
+        std::fs::create_dir_all(install_dir).map_err(GameServerError::CreateDir)?;
         let script_path = PathBuf::from(install_dir).join(format!("update_{app_id}.txt"));
         std::fs::write(&script_path, &script).map_err(GameServerError::WriteScript)?;
 

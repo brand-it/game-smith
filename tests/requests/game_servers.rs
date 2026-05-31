@@ -189,3 +189,60 @@ async fn servers_create_checkbox_non_true_value_fails() {
         "non-true value should fail deserialization"
     );
 }
+
+/// POST /servers/:id/update must not return 500 due to missing install_dir.
+///
+/// Regression test: `update()` wrote `install_dir/update_{app_id}.txt` without first
+/// calling `create_dir_all`, so a server whose install_dir was absent returned HTTP 500
+/// with error "failed to update server: No such file or directory".
+///
+/// This test only runs when SteamCMD is present on the host (it takes the code path that
+/// reaches `fs::write`). Without SteamCMD the handler returns 500 from
+/// `SteamCmdNotInstalled` regardless of the directory, so the assertion would be vacuous.
+#[tokio::test]
+#[serial]
+async fn servers_update_does_not_500_when_install_dir_missing() {
+    use game_smith::data::steamcmd::SteamCmd;
+    use game_smith::{resolve_data_home, AppDirs};
+
+    // Skip if SteamCMD is not installed — without it the handler 500s from
+    // SteamCmdNotInstalled regardless of the install_dir, making the assertion vacuous.
+    let data_home = resolve_data_home();
+    let dirs = AppDirs::new(data_home);
+    let steamcmd = SteamCmd::new(&dirs);
+    if !steamcmd.is_installed() {
+        return;
+    }
+
+    request::<App, _, _>(|request, ctx| async move {
+        // install_dir points to a path that does not exist on disk.
+        let nonexistent = std::env::temp_dir()
+            .join(format!("gs-req-update-{}/nonexistent", std::process::id()))
+            .to_string_lossy()
+            .to_string();
+        let model = ActiveModel::create(
+            &ctx,
+            740,
+            "Update Test Server".to_string(),
+            nonexistent,
+            "linux".to_string(),
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("failed to create server record");
+
+        let url = format!("/servers/{}/update", model.id);
+        let response = request.post(&url).await;
+
+        // Before the fix: 500 WriteScript (install_dir not created before fs::write).
+        // After the fix: create_dir_all runs first; response is redirect or other non-500.
+        assert_ne!(
+            response.status_code().as_u16(),
+            500,
+            "POST /servers/:id/update must not 500 when install_dir is missing (got WriteScript)"
+        );
+    })
+    .await;
+}

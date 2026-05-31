@@ -290,3 +290,95 @@ async fn test_find_running_returns_zombie_servers() {
     // (could be a fresh start or zombie — pid_liveness handles cleanup)
     assert!(is_alive(&boot.app_context, &found[0]).await);
 }
+
+/// update() must not return a WriteScript error when install_dir does not exist.
+///
+/// Regression test: `GameServerInstaller::update()` called `fs::write(install_dir/update_NNN.txt)`
+/// without first calling `create_dir_all`, so any server whose `install_dir` was absent on disk
+/// produced `GameServerError::WriteScript` → HTTP 500 in the `POST /servers/:id/update` handler.
+///
+/// The fix must add `create_dir_all(install_dir)` before `fs::write` in `update()`, mirroring
+/// what `install()` already does.
+#[tokio::test]
+#[serial]
+async fn test_update_creates_install_dir_before_writing_script() {
+    configure_insta!();
+
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Build a fake SteamCMD binary so is_installed() returns true and
+    // update() can reach the fs::write call.
+    //
+    // Path chain:
+    //   XDG_DATA_HOME = tmp
+    //   resolve_data_home() = "{tmp}/game-smith"
+    //   AppDirs::new(data_home) → app_dir = "{tmp}/game-smith/game-smith"
+    //   SteamCmd::new(dirs) → binary = app_dir/steamcmd/steamcmd.sh
+    let tmp = std::env::temp_dir().join(format!("gs-test-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let fake_steamcmd_dir = tmp.join("game-smith").join("game-smith").join("steamcmd");
+    std::fs::create_dir_all(&fake_steamcmd_dir).expect("failed to create fake steamcmd dir");
+    #[cfg(target_os = "windows")]
+    let binary_name = "steamcmd.exe";
+    #[cfg(not(target_os = "windows"))]
+    let binary_name = "steamcmd.sh";
+    std::fs::write(fake_steamcmd_dir.join(binary_name), b"#!/bin/sh\n")
+        .expect("failed to write fake binary");
+
+    // Point resolve_data_home() at our temp tree.
+    #[cfg(target_os = "windows")]
+    std::env::set_var("APPDATA", &tmp);
+    #[cfg(not(target_os = "windows"))]
+    std::env::set_var("XDG_DATA_HOME", &tmp);
+
+    // install_dir is a subdirectory that does NOT exist on disk.
+    let install_dir = tmp
+        .join("nonexistent-install-dir")
+        .to_string_lossy()
+        .to_string();
+
+    // Create a real DB record so the HTTP handler can load it.
+    let server = ActiveModel::create(
+        &boot.app_context,
+        740,
+        "Update Regression Server".to_string(),
+        install_dir,
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("failed to create server record");
+
+    let installer =
+        game_smith::data::game_server_installer::GameServerInstaller::new(&boot.app_context);
+    let result = installer.update(&server).await;
+
+    // Always clean up env and temp files before asserting.
+    #[cfg(target_os = "windows")]
+    let _ = std::env::remove_var("APPDATA");
+    #[cfg(not(target_os = "windows"))]
+    let _ = std::env::remove_var("XDG_DATA_HOME");
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    // Before the fix: WriteScript(Os { code: 2, kind: NotFound }) because
+    // install_dir was never created before fs::write.
+    // After the fix: install_dir is created, WriteScript must not occur.
+    //
+    // SteamCmdNotInstalled means the fake binary path was wrong in the test
+    // setup — treat it as a test-setup failure so the test is never vacuous.
+    match result {
+        Err(game_smith::data::game_server_installer::GameServerError::WriteScript(e)) => {
+            panic!("update() returned WriteScript — install_dir not created before fs::write: {e}");
+        }
+        Err(game_smith::data::game_server_installer::GameServerError::SteamCmdNotInstalled) => {
+            panic!(
+                "test setup error: fake SteamCMD binary was not found — \
+                 check XDG_DATA_HOME path construction"
+            );
+        }
+        // Execute error (fake binary ran and failed) or Ok — both are fine.
+        _ => {}
+    }
+}
