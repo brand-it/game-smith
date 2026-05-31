@@ -1,20 +1,22 @@
-/// Background worker that spawns game server processes and streams their output to log files.
+/// Background worker that spawns game server processes and streams their output to log
+/// files.
 ///
-/// On Linux, uses PTY-based streaming via `openpty` for proper terminal behavior.
-/// On Windows, uses piped stdout/stderr with `CREATE_NO_WINDOW` to suppress console windows.
+/// On Linux, uses PTY-based streaming via `libc::openpty` for proper terminal behavior.
+/// On Windows, uses PTY-based streaming via `portable-pty` (`ConPTY`) for proper terminal
+/// behavior.
 use async_trait::async_trait;
 #[cfg(target_os = "linux")]
 use libc::openpty;
 use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
+#[cfg(target_os = "windows")]
+use portable_pty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use tokio::io::AsyncRead;
 use tokio::process::Command;
 
@@ -28,10 +30,6 @@ pub struct CommandExecWorker {
 
 /// Delay before auto-restarting a game server process (seconds).
 const AUTO_RESTART_DELAY_SECS: u64 = 5;
-
-/// Windows `CREATE_NO_WINDOW` flag to suppress console windows for spawned processes.
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 impl CommandExecWorker {
     /// Load the run record and verify it is still in "running" state.
@@ -93,6 +91,17 @@ impl CommandExecWorker {
             (CommandStatus::Failed, Some(code))
         } else {
             (CommandStatus::Failed, None)
+        }
+    }
+
+    /// Determine status from a [`portable_pty::ExitStatus`] (Windows PTY).
+    #[cfg(target_os = "windows")]
+    fn determine_pty_status(status: portable_pty::ExitStatus) -> (CommandStatus, Option<i32>) {
+        if status.success() {
+            (CommandStatus::Completed, Some(0))
+        } else {
+            let code = status.exit_code() as i32;
+            (CommandStatus::Failed, Some(code))
         }
     }
 
@@ -357,7 +366,13 @@ impl CommandExecWorker {
         Self::configure_common(&mut cmd, model);
 
         let mut child = cmd.spawn().map_err(|e| {
-            Self::handle_spawn_error(&self.ctx, run_id, Self::is_health_check(model), &e)
+            Self::handle_spawn_error(
+                &self.ctx,
+                run_id,
+                Self::is_health_check(model),
+                &e,
+                e.kind(),
+            )
         })?;
 
         if let Some(pid) = child.id() {
@@ -378,7 +393,7 @@ impl CommandExecWorker {
         Ok(Self::determine_status(status))
     }
 
-    /// Spawn a single process and wait for it to exit (Windows).
+    /// Spawn a single process and wait for it to exit (Windows, PTY-based).
     #[cfg(target_os = "windows")]
     async fn spawn_one(
         &self,
@@ -387,39 +402,97 @@ impl CommandExecWorker {
     ) -> Result<(CommandStatus, Option<i32>)> {
         let cmd_args = Self::resolve_args(model);
 
-        let mut cmd = Command::new(&model.command);
+        // Create PTY for line-buffered output (ConPTY on Windows 10+)
+        let pty_system = portable_pty::native_pty_system();
+        let pair = pty_system
+            .openpty(
+                portable_pty::PtySize {
+                    rows: 25,
+                    cols: 80,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                },
+                None,
+            )
+            .map_err(|e| loco_rs::Error::string(&format!("failed to create pty: {e}")))?;
+
+        // Configure command via portable-pty builder
+        let mut cmd = portable_pty::CommandBuilder::new(&model.command);
         cmd.args(&cmd_args);
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-        cmd.kill_on_drop(true);
-        cmd.creation_flags(CREATE_NO_WINDOW);
 
-        Self::configure_common(&mut cmd, model);
+        if let Some(dir) = &model.working_dir {
+            cmd.cwd(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(&key, &value);
+                }
+            }
+        }
 
-        let mut child = cmd.spawn().map_err(|e| {
-            Self::handle_spawn_error(&self.ctx, run_id, Self::is_health_check(model), &e)
+        // Spawn child attached to PTY slave
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
+            Self::handle_spawn_error(
+                &self.ctx,
+                run_id,
+                Self::is_health_check(model),
+                &e,
+                io::ErrorKind::Other,
+            )
         })?;
 
-        if let Some(pid) = child.id() {
+        if let Some(pid) = child.process_id() {
             self.store_pid(run_id, pid).await;
         }
 
-        // Stream stdout and stderr → log file
+        // Stream PTY master → log file, then wait for child (both sync I/O)
         if let Some(ref lp) = model.log_path {
-            if let Some(stdout) = child.stdout.take() {
-                Self::spawn_reader(lp, stdout);
-            }
-            if let Some(stderr) = child.stderr.take() {
-                Self::spawn_reader(lp, stderr);
-            }
+            let log_path = lp.clone();
+            let reader = pair
+                .master
+                .try_clone_reader()
+                .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
+
+            let (status, exit_code) = tokio::task::spawn_blocking(move || {
+                // Spawn a thread to drain PTY output into the log file
+                let log_thread = std::thread::spawn(move || {
+                    if let Ok(mut log_file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&log_path)
+                    {
+                        let mut writer = std::io::BufWriter::new(log_file);
+                        let _ = std::io::copy(&mut reader, &mut writer);
+                    }
+                });
+
+                // Wait for child to exit (sync — required by portable-pty)
+                let exit_status = child.wait().map_err(|e| {
+                    loco_rs::Error::string(&format!("failed to wait for process: {e}"))
+                })?;
+
+                // Ensure log thread has finished draining
+                let _ = log_thread.join();
+
+                Ok(Self::determine_pty_status(exit_status))
+            })
+            .await
+            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?
+            .map_err(|e| e)?;
+
+            return Ok((status, exit_code));
         }
 
-        let status = child
-            .wait()
+        // No log path — just wait for child
+        let exit_status = tokio::task::spawn_blocking(move || child.wait())
             .await
+            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?
             .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
 
-        Ok(Self::determine_status(status))
+        Ok(Self::determine_pty_status(exit_status))
     }
 
     /// Parse args from the `SeaORM` JSON array.
@@ -454,16 +527,19 @@ impl CommandExecWorker {
 
     /// Handle spawn failure: log the error asynchronously and return a
     /// [`loco_rs::Error`].
-    fn handle_spawn_error(
+    fn handle_spawn_error<E>(
         ctx: &AppContext,
         run_id: i32,
         is_health_check: bool,
-        e: &io::Error,
-    ) -> loco_rs::Error {
+        e: &E,
+        kind: io::ErrorKind,
+    ) -> loco_rs::Error
+    where
+        E: std::fmt::Display,
+    {
         let ctx = ctx.clone();
         let rid = run_id;
         let msg = e.to_string();
-        let kind = e.kind();
         tokio::spawn(async move {
             Self::_log_spawn_failed(&ctx, rid, is_health_check, &msg, kind).await;
         });
@@ -471,8 +547,7 @@ impl CommandExecWorker {
     }
 
     /// Spawn a background task that copies output from an [`AsyncRead`] stream
-    /// into the run's log file. Used for PTY master on Linux and piped
-    /// stdout/stderr on Windows.
+    /// into the run's log file. Used for PTY master on Linux.
     fn spawn_reader<R>(log_path: &str, reader: R)
     where
         R: AsyncRead + Send + 'static,
@@ -484,11 +559,14 @@ impl CommandExecWorker {
             .open(log_path)
         {
             let log_file = tokio::fs::File::from_std(log_file);
+            tracing::debug!(log_path = %lp, "log reader started");
             tokio::spawn(async move {
                 let mut reader = Box::pin(reader);
                 let mut log_file = log_file;
                 if let Err(e) = tokio::io::copy(&mut reader, &mut log_file).await {
                     tracing::warn!(%lp, error = %e, "log reader failed");
+                } else {
+                    tracing::debug!(log_path = %lp, "log reader completed");
                 }
             });
         }
