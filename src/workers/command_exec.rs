@@ -15,6 +15,8 @@ use portable_pty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
+#[cfg(target_os = "windows")]
+use std::io::Write;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
 use tokio::io::AsyncRead;
@@ -513,7 +515,7 @@ impl CommandExecWorker {
             let start = std::time::Instant::now();
             let timeout = std::time::Duration::from_secs(5);
             while let Some(h) = handle.as_ref() {
-                if !h.thread().is_alive() {
+                if h.is_finished() {
                     break;
                 }
                 if start.elapsed() >= timeout {
