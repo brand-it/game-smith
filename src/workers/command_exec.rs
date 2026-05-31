@@ -448,7 +448,7 @@ impl CommandExecWorker {
         // Stream PTY master → log file, then wait for child (both sync I/O)
         if let Some(ref lp) = model.log_path {
             let log_path = lp.clone();
-            let reader = pair
+            let mut reader = pair
                 .master
                 .try_clone_reader()
                 .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
