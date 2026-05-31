@@ -477,9 +477,7 @@ impl CommandExecWorker {
                 Ok(Self::determine_pty_status(exit_status))
             })
             .await
-            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?
-            .map_err(|e| e)?;
-
+            .map_err(|e| loco_rs::Error::string(&format!("spawn_blocking panicked: {e}")))?;
             return Ok((status, exit_code));
         }
 
