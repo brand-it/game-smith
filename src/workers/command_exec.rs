@@ -478,7 +478,11 @@ impl CommandExecWorker {
             })
             .await
             {
-                Err(e) => return Err(loco_rs::Error::string(&format!("spawn_blocking panicked: {e}"))),
+                Err(e) => {
+                    return Err(loco_rs::Error::string(&format!(
+                        "spawn_blocking panicked: {e}"
+                    )))
+                }
                 Ok(Err(e)) => return Err(e),
                 Ok(Ok((s, ec))) => return Ok((s, ec)),
             }
