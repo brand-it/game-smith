@@ -46,13 +46,13 @@ async fn servers_list_with_data() {
             "linux".to_string(),
             None,
             None,
+            false,
         )
         .await
         .expect("Failed to create game server");
 
         let response = request.get("/servers").await;
         response.assert_status_success();
-
         let body = response.text();
         assert!(
             body.contains("My CS2 Server"),
@@ -107,6 +107,7 @@ async fn servers_show_renders() {
             "linux".to_string(),
             None,
             None,
+            false,
         )
         .await
         .expect("Failed to create game server");
@@ -146,4 +147,45 @@ async fn servers_create_invalid_app_id() {
         );
     })
     .await;
+}
+
+/// Verify CreateServerForm deserializes use_steam_login as false when absent from form.
+#[tokio::test]
+#[serial]
+async fn servers_create_checkbox_unchecked_defaults_false() {
+    use game_smith::controllers::game_servers::CreateServerForm;
+
+    // Unchecked checkbox sends nothing for use_steam_login
+    let data = "app_id=730&name=Test+Server";
+    let form: CreateServerForm =
+        serde_urlencoded::from_str(data).expect("should parse without use_steam_login");
+    assert!(!form.use_steam_login, "unchecked should default to false");
+}
+
+/// Verify CreateServerForm deserializes use_steam_login as true when checkbox checked.
+#[tokio::test]
+#[serial]
+async fn servers_create_checkbox_checked_parses_true() {
+    use game_smith::controllers::game_servers::CreateServerForm;
+
+    // Checked checkbox sends use_steam_login=true
+    let data = "app_id=730&name=Test+Server&use_steam_login=true";
+    let form: CreateServerForm =
+        serde_urlencoded::from_str(data).expect("should parse with use_steam_login=true");
+    assert!(form.use_steam_login, "checked should be true");
+}
+
+/// Verify CreateServerForm rejects non-true values for use_steam_login.
+#[tokio::test]
+#[serial]
+async fn servers_create_checkbox_non_true_value_fails() {
+    use game_smith::controllers::game_servers::CreateServerForm;
+
+    // A non-"true" value should fail deserialization since the field expects a bool
+    let data = "app_id=730&name=Test+Server&use_steam_login=on";
+    let result: Result<CreateServerForm, _> = serde_urlencoded::from_str(data);
+    assert!(
+        result.is_err(),
+        "non-true value should fail deserialization"
+    );
 }

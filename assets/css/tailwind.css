@@ -1,3 +1,4 @@
+@import "./common.css";
 @import "tailwindcss";
 @source "../../assets/views/**/*.html";
 @source "../../src/**/*.rs";

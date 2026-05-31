@@ -27,6 +27,7 @@ async fn test_create_game_server() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -55,6 +56,7 @@ async fn test_find_by_id() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -95,6 +97,7 @@ async fn test_update_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create game server");
@@ -129,6 +132,7 @@ async fn test_list() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -155,6 +159,7 @@ async fn test_app_id_u32() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -192,6 +197,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -209,6 +215,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -226,6 +233,7 @@ async fn test_find_running_filters_by_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -260,6 +268,7 @@ async fn test_find_running_returns_zombie_servers() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create");
@@ -277,6 +286,7 @@ async fn test_find_running_returns_zombie_servers() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].id, server.id);
 
-    // But is_alive should return false because no running command runs exist
-    assert!(!is_alive(&boot.app_context, &found[0]).await);
+    // is_alive trusts the DB status when no command runs exist
+    // (could be a fresh start or zombie — pid_liveness handles cleanup)
+    assert!(is_alive(&boot.app_context, &found[0]).await);
 }

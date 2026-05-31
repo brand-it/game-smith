@@ -1,7 +1,7 @@
+use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::response::Redirect;
 use axum::routing::{get, post};
 use loco_rs::bgworker::BackgroundWorker;
-use loco_rs::controller::views::engines::TeraView;
 use loco_rs::prelude::*;
 
 use crate::data::steamcmd::{health_status, SteamCmd, SteamCmdHealthStatus};
@@ -18,7 +18,7 @@ use crate::{resolve_data_home, AppDirs};
 /// Returns a [`loco_rs::Error`] if rendering fails.
 pub async fn check_status(
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let data_home = resolve_data_home();
     let dirs = AppDirs::new(data_home);

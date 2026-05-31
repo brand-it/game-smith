@@ -86,42 +86,83 @@ pub fn slugify(name: &str) -> String {
 
 /// Compute the default install directory for a game server.
 ///
-/// Format: `~/game-smith/games/{slug}/`
+/// - Linux: `~/game-smith/games/{slug}/`
+/// - Windows: `%USERPROFILE%\game-smith\games\{slug}`
 #[must_use]
 pub fn default_install_dir(name: &str) -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/"));
     let slug = slugify(name);
-    format!("{home}/game-smith/games/{slug}")
+    #[cfg(target_os = "windows")]
+    {
+        let home = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("%USERPROFILE%"));
+        format!("{home}\\game-smith\\games\\{slug}")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_else(|_| String::from("/"));
+        format!("{home}/game-smith/games/{slug}")
+    }
 }
+/// Cross-platform signal constant for termination.
+/// Resolves to `libc::SIGTERM` on Linux; `0` on Windows (ignored by `kill_pid`).
+#[cfg(target_os = "windows")]
+pub const TERM_SIGNAL: i32 = 0;
 
+#[cfg(target_os = "linux")]
+use libc;
+
+#[cfg(target_os = "linux")]
+pub const TERM_SIGNAL: libc::c_int = libc::SIGTERM;
 /// Check if a process is alive by sending signal 0.
 /// Returns `true` if the process exists and is accessible.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
 pub fn check_pid_alive(pid: i64) -> bool {
     let result = unsafe { libc::kill(pid as libc::c_int, 0) };
     result == 0
 }
-/// Send a signal to a process by PID.
-/// Returns the result of `libc::kill`.
+
+/// Check if a process is alive on Windows.
+/// Opens the process with `PROCESS_QUERY_INFORMATION` and checks if the
+/// handle is still valid.
+#[must_use]
+#[cfg(target_os = "windows")]
+pub fn check_pid_alive(pid: i64) -> bool {
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
+    unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, false, pid as u32).is_ok() }
+}
+
+/// Send a signal to a process by PID (Linux: `libc::kill`).
+/// Returns `Ok(())` on success, `Err` if the process couldn't be signaled.
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
 pub fn kill_pid(pid: i64, signal: libc::c_int) -> libc::c_int {
     unsafe { libc::kill(pid as libc::c_int, signal) }
 }
 
-/// Check whether this server process is actually alive.
-///
-/// Returns `true` only if there is a running [`command_runs`][super::command_runs::Model] record
-/// for this server whose PID corresponds to a living process.
-/// The DB status column is ignored — it represents intent, not observation.
-pub async fn is_alive(ctx: &AppContext, server: &Model) -> bool {
-    let Ok(runs) =
-        super::command_runs::Model::find_running_by_server(ctx, i64::from(server.id)).await
-    else {
+/// Terminate a process by PID on Windows using `TerminateProcess`.
+/// The `_signal` parameter is ignored on Windows (process is always terminated).
+#[must_use]
+#[cfg(target_os = "windows")]
+pub fn kill_pid(pid: i64, _signal: i32) -> bool {
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    let Ok(handle) = (unsafe { OpenProcess(PROCESS_TERMINATE, false, pid as u32) }) else {
         return false;
     };
-    runs.iter().any(|run| run.pid.is_some_and(check_pid_alive))
+    unsafe { TerminateProcess(handle, 1).is_ok() }
+}
+
+/// Check whether this server process is actually alive.
+///
+/// The DB `status` column is authoritative — it represents user intent
+/// (start/stop). The PID provides ground-truth observation, but during
+/// restarts there may be a brief window where the PID is dead but the
+/// worker is about to spawn a new process. Trusting the status column
+/// avoids flickering the stop button.
+#[allow(clippy::unused_async)]
+pub async fn is_alive(_ctx: &AppContext, server: &Model) -> bool {
+    server.status() == ServerStatus::Running
 }
 
 #[async_trait::async_trait]
@@ -152,6 +193,7 @@ impl ActiveModel {
     /// * `platform` - Target platform ("linux", "windows", "macos").
     /// * `server_mod` - Optional mod name for HL1 games.
     /// * `beta_branch` - Optional beta branch name for `app_update`.
+    /// * `use_steam_login` - When `true`, use Steam credentials; when `false`, use anonymous login.
     ///
     /// # Errors
     /// Returns a [`ModelError`] if the database operation fails.
@@ -164,6 +206,7 @@ impl ActiveModel {
         platform: String,
         server_mod: Option<String>,
         beta_branch: Option<String>,
+        use_steam_login: bool,
     ) -> Result<Model, ModelError> {
         let now = chrono::Utc::now();
         let record = Self {
@@ -187,6 +230,7 @@ impl ActiveModel {
             last_error: ActiveValue::NotSet,
             server_mod: ActiveValue::Set(server_mod),
             beta_branch: ActiveValue::Set(beta_branch),
+            use_steam_login: ActiveValue::Set(use_steam_login),
         };
         record.insert(&ctx.db).await.map_err(ModelError::from)
     }
@@ -231,6 +275,19 @@ impl ActiveModel {
         boot_script: Option<String>,
     ) -> Result<Model, ModelError> {
         self.boot_script = ActiveValue::Set(boot_script);
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
+
+    /// Update the auto-restart setting for a game server.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_auto_restart(
+        &mut self,
+        ctx: &AppContext,
+        auto_restart: bool,
+    ) -> Result<Model, ModelError> {
+        self.auto_restart = ActiveValue::Set(auto_restart);
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
 }
@@ -301,3 +358,39 @@ impl Model {
 }
 
 impl Entity {}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn term_signal_is_sigterm() {
+        assert_eq!(TERM_SIGNAL, libc::SIGTERM);
+    }
+
+    #[test]
+    fn check_pid_alive_returns_true_for_self() {
+        let pid = std::process::id() as i64;
+        assert!(check_pid_alive(pid));
+    }
+
+    #[test]
+    fn check_pid_alive_returns_false_for_nonexistent() {
+        assert!(!check_pid_alive(999999));
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn term_signal_is_zero_on_windows() {
+        assert_eq!(TERM_SIGNAL, 0);
+    }
+
+    #[test]
+    fn kill_pid_returns_false_for_nonexistent_process() {
+        assert!(!kill_pid(999999, 0));
+    }
+}

@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use std::io::Write;
 
 use game_smith::app::clean_stale_migrations;

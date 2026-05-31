@@ -214,7 +214,10 @@ impl CommandRunner {
 
         // Try to terminate the process if we have a PID
         if let Some(pid) = model.pid {
-            let _ = crate::models::game_servers::kill_pid(pid, libc::SIGTERM);
+            let _ = crate::models::game_servers::kill_pid(
+                pid,
+                crate::models::game_servers::TERM_SIGNAL,
+            );
         }
 
         // Mark as stopped in DB

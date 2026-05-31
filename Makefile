@@ -1,6 +1,6 @@
 .PHONY: help setup setup-check dev watch \
 	test fmt fmt-check style lint qa \
-	migrate-gen migrate-up build build-css release package package-rpm install run-release clean reset
+	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset
 
 help:
 	@echo "Usage: make <target>"
@@ -31,6 +31,7 @@ help:
 	@echo "  release       Production build"
 	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
 	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
+	@echo "  package-msi   Build Windows .msi installer (requires cargo-wix)"
 	@echo ""
 	@echo "Cleanup"
 	@echo "  clean         Remove build artifacts"
@@ -128,6 +129,14 @@ package-rpm: package
 	@ls -1 target/release/game-smith_$(VERSION)* target/release/game-smith-$(VERSION)* \
 	        target/release/x86_64/game-smith-$(VERSION)*.rpm 2>/dev/null | sed 's/^/  /'
 
+
+package-msi:
+	cargo install cargo-wix --locked --quiet 2>/dev/null || true
+	cargo build --release --bin game-smith
+	cargo wix --package game-smith
+	@echo ""
+	@echo "MSI installer built:"
+	@ls -1 target/wix/*.msi 2>/dev/null | sed 's/^/  /'
 
 # ── Install & Run ──────────────────────────────────────────────────────
 

@@ -25,7 +25,6 @@ tokio = { version = "1.45", default-features = false, features = [
 async-trait = { version = "0.1" }
 axum = { version = "0.8" }
 tracing = { version = "0.1", features = ["log"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 log = { version = "0.4" }
 regex = { version = "1.11" }
 tera = { version = "1.20" }
@@ -42,14 +41,16 @@ serde_yaml = { version = "0.9" }
 validator = { version = "0.20" }
 uuid = { version = "1.6", features = ["v4"] }
 include_dir = { version = "0.7" }
+mime_guess = { version = "2" }
 # view engine i18n
-fluent-templates = { version = "0.13", features = ["tera"] }
+fluent-templates = { version = "0.13", features = ["tera", "macros"] }
 unic-langid = { version = "0.9" }
 # /view engine
 axum-extra = { version = "0.10", features = ["form"] }
 socketioxide = { version = "0.18", features = ["extensions", "state"] }
 tower = { version = "0.5" }
 tower-http = { version = "0.6", features = ["cors"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 open = { version = "5" }
 # steamcmd installation & execution
@@ -74,8 +75,10 @@ libc = { version = "0.2" }
 tray-icon = { version = "0.24", default-features = false }
 windows = { version = "0.62", features = [
   "Win32_Foundation",
+  "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
 ] }
+portable-pty = { version = "0.9" }
 [[bin]]
 name = "game-smith"
 path = "src/bin/main.rs"
@@ -85,6 +88,7 @@ loco-rs = { workspace = true, features = ["testing"] }
 serial_test = { version = "3.1.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }
+ serde_urlencoded = { version = "0.7" }
 
 [package.metadata.packager]
 before-packaging-command = "cargo build --release"
@@ -101,3 +105,9 @@ authors = ["brand-it <brandt@lareaus.com>"]
 [package.metadata.packager.deb]
 desktop-template = "game-smith.desktop"
 depends = ["libgtk-3-0", "libappindicator3-1"]
+
+[package.metadata.wix]
+upgrade-guid = "A8F3C7E1-9B2D-4E5F-8A1C-3D7E9F2B4C6A"
+path-guid = "B2E4D8F3-1C5A-4D7E-9B3F-6A8C2E4D7F9B"
+license = false
+eula = false
