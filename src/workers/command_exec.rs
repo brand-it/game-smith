@@ -450,7 +450,7 @@ impl CommandExecWorker {
         // Clone reader for background drain — prevents PTY output buffer from
         // filling up and deadlocking the child, regardless of whether a log
         // file is configured.
-        let reader = pair
+        let mut reader = pair
             .master
             .try_clone_reader()
             .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
