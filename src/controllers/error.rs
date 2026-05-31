@@ -65,6 +65,10 @@ impl IntoResponse for StandardError {
             Self::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "Unauthorized", msg),
         };
 
+        let logs_path = crate::AppDirs::new(crate::resolve_data_home())
+            .logs_dir
+            .to_string_lossy()
+            .into_owned();
         let body = format!(
             r#"<!DOCTYPE html>
 <html lang="en">
@@ -185,7 +189,7 @@ impl IntoResponse for StandardError {
                 <div style="font-size:6rem;font-weight:800;color:#1e293b;line-height:1;margin-bottom:16px;">{status}</div>
                 <h1 style="font-size:1.5rem;font-weight:600;color:#1e293b;margin:0 0 8px;">{title}</h1>
                 <p style="font-size:1rem;color:#475569;margin:0 0 24px;">{message}</p>
-                <p style="font-size:0.875rem;color:#94a3b8;margin:0;">Check the logs at <code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;">~/.local/share/game-smith/logs/</code> for more details.</p>
+                <p style="font-size:0.875rem;color:#94a3b8;margin:0;">Check the logs at <code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;">{logs_path}</code> for more details.</p>
             </div>
         </div>
     </div>

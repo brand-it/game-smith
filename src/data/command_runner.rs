@@ -57,14 +57,11 @@ pub struct CommandRunner {
 impl CommandRunner {
     /// Create a new [`CommandRunner`] with the given application context.
     ///
-    /// The log directory is derived from the XDG data home path.
+    /// The log directory is derived from the platform data home path.
     #[must_use]
     pub fn new(ctx: &AppContext) -> Self {
-        let data_home = crate::resolve_data_home();
-        let logs_dir = PathBuf::from(&data_home)
-            .join("game-smith")
-            .join("logs")
-            .join("commands");
+        let dirs = crate::AppDirs::new(crate::resolve_data_home());
+        let logs_dir = dirs.logs_dir.join("commands");
         Self {
             ctx: ctx.clone(),
             logs_dir,
