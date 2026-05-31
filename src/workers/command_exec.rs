@@ -405,15 +405,12 @@ impl CommandExecWorker {
         // Create PTY for line-buffered output (ConPTY on Windows 10+)
         let pty_system = portable_pty::native_pty_system();
         let pair = pty_system
-            .openpty(
-                portable_pty::PtySize {
-                    rows: 25,
-                    cols: 80,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                },
-                None,
-            )
+            .openpty(portable_pty::PtySize {
+                rows: 25,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .map_err(|e| loco_rs::Error::string(&format!("failed to create pty: {e}")))?;
 
         // Configure command via portable-pty builder
