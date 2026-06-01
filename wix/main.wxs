@@ -124,6 +124,9 @@
                     </Directory>
                 </Directory>
             </Directory>
+            <!-- System folders for shortcuts -->
+            <Directory Id='ProgramMenuFolder'/>
+            <Directory Id='DesktopFolder'/>
         </Directory>
 
         <!-- Start Menu shortcut (WixStandardDir fragment provides ProgramMenuFolder) -->
