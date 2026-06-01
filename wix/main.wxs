@@ -28,8 +28,8 @@
                       be "target\<CARGO_TARGET>\<CARGO_PROFILE>",
                       where "<CARGO_TARGET>" is replaced with the "CargoTarget"
                       variable value and "<CARGO_PROFILE>" is replaced with the
-                      value from the "CargoProfile" variable. This can also
-                      be overridden manually with the "target-bin-dir" flag.
+                      value from the "CargoProfile" variable. This can also be
+                      overridden manually with the "target-bin-dir" flag.
   CargoTargetDir    = The path to the directory for the build artifacts, i.e.
                       "target".
   CargoProfile      = The cargo profile used to build the binaries
@@ -82,7 +82,6 @@
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='Game Smith'>
-                    
                     <!--
                       Enabling the license sidecar file in the installer is a four step process:
 
@@ -125,8 +124,51 @@
                     </Directory>
                 </Directory>
             </Directory>
+        </Directory>
 
+        <!-- Start Menu shortcut (WixStandardDir fragment provides ProgramMenuFolder) -->
+        <DirectoryRef Id='ProgramMenuFolder'>
+            <Directory Id='GameSmithMenu' Name='Game Smith'>
+                <Component Id='StartMenuShortcut' Guid='*'>
+                    <Shortcut
+                        Id='StartMenuShortcut'
+                        Name='Game Smith'
+                        Description='Launch Game Smith server'
+                        Target='[Bin]game-smith.exe'
+                        WorkingDirectory='Bin'
+                        Icon='ProductICO'/>
+                    <RemoveFolder Id='GameSmithMenu' On='uninstall'/>
+                    <RegistryValue
+                        Root='HKCU'
+                        Key='Software\brand-it\Game Smith'
+                        Name='installed'
+                        Type='integer'
+                        Value='1'
+                        KeyPath='yes'/>
+                </Component>
             </Directory>
+        </DirectoryRef>
+
+        <!-- Desktop shortcut (WixStandardDir fragment provides DesktopFolder) -->
+        <DirectoryRef Id='DesktopFolder'>
+            <Component Id='DesktopShortcut' Guid='*'>
+                <Shortcut
+                    Id='DesktopShortcut'
+                    Name='Game Smith'
+                    Description='Launch Game Smith server'
+                    Target='[Bin]game-smith.exe'
+                    WorkingDirectory='Bin'
+                    Icon='ProductICO'/>
+                <RegistryValue
+                    Root='HKCU'
+                    Key='Software\brand-it\Game Smith\DesktopShortcut'
+                    Name='installed'
+                    Type='integer'
+                    Value='1'
+                    KeyPath='yes'/>
+            </Component>
+        </DirectoryRef>
+
         <Feature
             Id='Binaries'
             Title='Application'
@@ -136,14 +178,12 @@
             AllowAdvertise='no'
             Display='expand'
             Absent='disallow'>
-            
-            <!--
-              Uncomment the following `ComponentRef` tag to add the license
-              sidecar file to the installer.
-            -->
+
             <!--<ComponentRef Id='License'/>-->
 
             <ComponentRef Id='binary0'/>
+            <ComponentRef Id='StartMenuShortcut'/>
+            <ComponentRef Id='DesktopShortcut'/>
 
             <Feature
                 Id='Environment'
@@ -157,7 +197,6 @@
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
-        
         <!--
           Uncomment the following `Icon` and `Property` tags to change the product icon.
 
@@ -167,12 +206,11 @@
         <Icon Id='ProductICO' SourceFile='assets/icons/game-smith.ico'/>
         <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
 
-        
         <Property Id='ARPHELPLINK' Value='https://github.com/brand-it/game-smith'/>
 
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>
-            
+
             <!--
               Enabling the EULA dialog in the installer is a three step process:
 
@@ -188,7 +226,6 @@
 
         </UI>
 
-        
         <!--
           Enabling the EULA dialog in the installer requires uncommenting
           the following `WixUILicenseRTF` tag and changing the `Value`
@@ -196,7 +233,6 @@
         -->
         <!-- <WixVariable Id='WixUILicenseRtf' Value='Relative\Path\to\Eula.rtf'/> -->
 
-        
         <!--
           Uncomment the next `WixVariable` tag to customize the installer's
           Graphical User Interface (GUI) and add a custom banner image across
@@ -207,7 +243,6 @@
         -->
         <!--<WixVariable Id='WixUIBannerBmp' Value='wix\Banner.bmp'/>-->
 
-        
         <!--
           Uncomment the next `WixVariable` tag to customize the installer's
           Graphical User Interface (GUI) and add a custom image to the first

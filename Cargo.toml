@@ -2,7 +2,7 @@
 
 [package]
 name = "game-smith"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = false
 default-run = "game-smith"
