@@ -168,9 +168,16 @@ async fn stream_log(ctx: loco_rs::app::AppContext, socket: SocketRef, run_id: i3
     }
 
     let runner = CommandRunner::new(&ctx);
-    let poll_interval = tokio::time::Duration::from_millis(500);
-    let mut current_offset: u64 = 0;
+    let poll_interval = tokio::time::Duration::from_millis(250);
 
+    // Start from the current file size so we only emit new content.
+    // The template already renders existing log content via {{ log_content }}.
+    let mut current_offset: u64 = model
+        .log_path
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map_or(0, |m| m.len());
+    tracing::debug!(run_id, current_offset, "stream_log started");
     loop {
         // Read new content from the log file
         match runner.tail(run_id, Some(current_offset)).await {
@@ -179,6 +186,12 @@ async fn stream_log(ctx: loco_rs::app::AppContext, socket: SocketRef, run_id: i3
                     let content_len: u64 = content.len() as u64;
                     current_offset += content_len;
 
+                    tracing::debug!(
+                        run_id,
+                        bytes_read = content_len,
+                        offset = current_offset,
+                        "emitted log chunk"
+                    );
                     let _ = socket.emit(
                         "log",
                         &LogEvent {
@@ -198,6 +211,7 @@ async fn stream_log(ctx: loco_rs::app::AppContext, socket: SocketRef, run_id: i3
         match CommandRunModel::find_by_id(&ctx, run_id).await {
             Ok(Some(current)) => {
                 if !current.is_running() {
+                    tracing::info!(run_id, status = %current.status, "stream_log finished");
                     let _ = socket.emit(
                         "status",
                         &StatusEvent {

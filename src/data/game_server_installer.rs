@@ -18,6 +18,8 @@ pub enum GameServerError {
     CreateDir(std::io::Error),
     /// Failed to write the `SteamCMD` script file.
     WriteScript(std::io::Error),
+    /// Failed to write the boot script `.bat` file.
+    WriteBootScript(std::io::Error),
     /// Failed to execute the installation command.
     Execute(ModelError),
     /// The game server record was not found.
@@ -32,6 +34,7 @@ impl std::fmt::Display for GameServerError {
             Self::SteamCmdNotInstalled => write!(f, "SteamCMD is not installed"),
             Self::CreateDir(e) => write!(f, "failed to create install directory: {e}"),
             Self::WriteScript(e) => write!(f, "failed to write SteamCMD script: {e}"),
+            Self::WriteBootScript(e) => write!(f, "failed to write boot script: {e}"),
             Self::Execute(e) => write!(f, "failed to execute installation: {e}"),
             Self::NotFound => write!(f, "game server not found"),
             Self::SteamCredentials(e) => write!(f, "failed to decrypt Steam credentials: {e}"),
@@ -204,8 +207,12 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
-        // Load Steam credentials if configured
-        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+        // Load Steam credentials only if server is configured to use Steam login
+        let (steam_username, steam_password) = if server.use_steam_login {
+            self.load_steam_credentials().await?
+        } else {
+            (None, None)
+        };
 
         // Resolve SteamCMD binary path
         let data_home = crate::resolve_data_home();
@@ -279,8 +286,12 @@ impl GameServerInstaller {
         let server_mod = server.server_mod.as_deref();
         let beta_branch = server.beta_branch.as_deref();
 
-        // Load Steam credentials if configured
-        let (steam_username, steam_password) = self.load_steam_credentials().await?;
+        // Load Steam credentials only if server is configured to use Steam login
+        let (steam_username, steam_password) = if server.use_steam_login {
+            self.load_steam_credentials().await?
+        } else {
+            (None, None)
+        };
 
         let data_home = crate::resolve_data_home();
         let dirs = crate::AppDirs::new(data_home);
@@ -299,6 +310,7 @@ impl GameServerInstaller {
             steam_username.as_deref(),
             steam_password.as_deref(),
         );
+        std::fs::create_dir_all(install_dir).map_err(GameServerError::CreateDir)?;
         let script_path = PathBuf::from(install_dir).join(format!("update_{app_id}.txt"));
         std::fs::write(&script_path, &script).map_err(GameServerError::WriteScript)?;
 
@@ -331,7 +343,8 @@ impl GameServerInstaller {
     /// Start a game server using its boot script.
     ///
     /// If no boot script is configured, attempts to find and run the default
-    /// server executable.
+    /// server executable. If neither is available, logs a warning and returns
+    /// `Ok(None)` without erroring.
     ///
     /// # Arguments
     /// * `server` - The game server model record.
@@ -341,14 +354,25 @@ impl GameServerInstaller {
     pub async fn start(
         &self,
         server: &game_servers::Model,
-    ) -> Result<crate::data::command_runner::CommandRun, GameServerError> {
+    ) -> Result<Option<crate::data::command_runner::CommandRun>, GameServerError> {
         let runner = CommandRunner::new(&self.ctx);
 
         let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
-            // Use user-defined boot script
+            #[cfg(target_os = "windows")]
+            let (command, args) = {
+                let bat_path = Self::write_boot_script_batch(&server.install_dir, script)
+                    .map_err(GameServerError::WriteBootScript)?;
+                (
+                    "cmd.exe".to_string(),
+                    vec!["/C".to_string(), bat_path.to_string_lossy().to_string()],
+                )
+            };
+
+            #[cfg(not(target_os = "windows"))]
+            let (command, args) = Self::boot_script_command(script);
             (
-                "/bin/sh".to_string(),
-                vec!["-c".to_string(), script.clone()],
+                command,
+                args,
                 Some(server.install_dir.clone()),
                 Some(format!("Start {}", server.name)),
             )
@@ -370,16 +394,11 @@ impl GameServerInstaller {
                     install_dir = %server.install_dir,
                     "No server executable found and no boot script configured"
                 );
-                return Err(GameServerError::Execute(ModelError::from(Box::new(
-                    std::io::Error::other(
-                        "no boot script configured and no server executable found",
-                    ),
-                )
-                    as Box<dyn std::error::Error + Send + Sync>)));
+                return Ok(None);
             }
         };
 
-        runner
+        let run = runner
             .execute(
                 command,
                 args,
@@ -389,7 +408,9 @@ impl GameServerInstaller {
                 Some(i64::from(server.id)),
             )
             .await
-            .map_err(GameServerError::Execute)
+            .map_err(GameServerError::Execute)?;
+
+        Ok(Some(run))
     }
 
     /// Attempt to find a server executable in the install directory.
@@ -397,7 +418,9 @@ impl GameServerInstaller {
     /// Checks common server binary names for popular game servers.
     #[must_use]
     pub fn find_server_executable(install_dir: &std::path::Path) -> Option<PathBuf> {
-        let candidates = [
+        // Linux: executables identified by permissions, not extension
+        #[cfg(target_os = "linux")]
+        let primary_candidates = [
             "srcds_run",
             "srcds",
             "hl_linux",
@@ -405,18 +428,33 @@ impl GameServerInstaller {
             "server",
             "game-server",
         ];
+        // Windows: check .exe variants, including Windows-specific names
+        #[cfg(target_os = "windows")]
+        let primary_candidates = [
+            "srcds.exe",
+            "srcds_run.exe",
+            "hl.exe",
+            "hlds.exe",
+            "hlds_run.exe",
+            "server.exe",
+        ];
 
-        for candidate in &candidates {
+        for candidate in &primary_candidates {
             let path = install_dir.join(candidate);
             if path.exists() {
                 return Some(path);
             }
         }
 
-        // On Windows, also check .exe files
-        #[cfg(target_os = "windows")]
-        for candidate in &candidates {
-            let path = install_dir.join(format!("{candidate}.exe"));
+        // Fallback: check remaining variants (e.g. .exe on Linux for cross-platform installs)
+        let fallback = [
+            "srcds_run.exe",
+            "srcds.exe",
+            "server.exe",
+            "game-server.exe",
+        ];
+        for candidate in &fallback {
+            let path = install_dir.join(candidate);
             if path.exists() {
                 return Some(path);
             }
@@ -445,7 +483,10 @@ impl GameServerInstaller {
 
         for run in running_runs {
             if let Some(pid) = run.pid {
-                let _ = crate::models::game_servers::kill_pid(pid, libc::SIGTERM);
+                let _ = crate::models::game_servers::kill_pid(
+                    pid,
+                    crate::models::game_servers::TERM_SIGNAL,
+                );
                 info!(
                     server_id = server.id,
                     run_id = run.id,
@@ -487,6 +528,36 @@ impl GameServerInstaller {
 
         info!(server_id = server.id, "Game server record deleted");
         Ok(())
+    }
+
+    /// Writes the boot script to a `.bat` file and returns the path.
+    ///
+    /// On Windows, passing multiline or quoted scripts inline to `cmd.exe /C`
+    /// is fragile. Writing to a file first avoids quoting issues.
+    #[cfg(target_os = "windows")]
+    fn write_boot_script_batch(install_dir: &str, script: &str) -> Result<PathBuf, std::io::Error> {
+        let bat_path = PathBuf::from(install_dir).join("game-smith-start.bat");
+        let content = format!("@echo off\r\n{script}");
+        std::fs::write(&bat_path, content)?;
+        Ok(bat_path)
+    }
+    /// Returns the shell command and arguments for executing a boot script.
+    ///
+    /// On Windows, uses `cmd.exe /C <script>`.
+    /// On other platforms, uses `/bin/sh -c <script>`.
+    #[must_use]
+    fn boot_script_command(script: &str) -> (String, Vec<String>) {
+        #[cfg(target_os = "windows")]
+        return (
+            "cmd.exe".to_string(),
+            vec!["/C".to_string(), script.to_string()],
+        );
+
+        #[cfg(not(target_os = "windows"))]
+        (
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), script.to_string()],
+        )
     }
 }
 
@@ -598,6 +669,9 @@ mod tests {
     #[test]
     fn test_default_install_dir() {
         let dir = game_servers::default_install_dir("My Server");
+        #[cfg(target_os = "windows")]
+        assert!(dir.contains("\\game-smith\\games\\my-server"));
+        #[cfg(not(target_os = "windows"))]
         assert!(dir.contains("/game-smith/games/my-server"));
     }
 
@@ -649,5 +723,36 @@ mod tests {
 
         assert!(script.contains("login anonymous"));
         assert!(script.contains("@NoPromptForPassword 1"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_write_boot_script_batch() {
+        let dir = std::env::temp_dir().join(format!("game-smith-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("failed to create temp dir");
+        let dir_str = dir.to_string_lossy().to_string();
+
+        let script = "start /B server.exe -port 27015\r\necho done";
+        let bat_path = GameServerInstaller::write_boot_script_batch(&dir_str, script)
+            .expect("failed to write batch file");
+
+        assert!(bat_path.exists(), "batch file was not created");
+        assert_eq!(bat_path.file_name().unwrap(), "game-smith-start.bat");
+
+        let content = std::fs::read_to_string(&bat_path).expect("failed to read batch file");
+        assert!(content.starts_with("@echo off\r\n"));
+        assert!(content.contains("start /B server.exe -port 27015"));
+        assert!(content.contains("echo done"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_boot_script_command_unix() {
+        let (cmd, args) = GameServerInstaller::boot_script_command("./srcds_run -game csgo");
+        assert_eq!(cmd, "/bin/sh");
+        assert_eq!(args, ["-c", "./srcds_run -game csgo"]);
     }
 }

@@ -49,13 +49,25 @@ impl AppDirs {
         format!("sqlite://{}?mode=rwc", test_path.display())
     }
 }
-/// Resolve the user's XDG data home directory.
+/// Resolve the application data directory, cross-platform.
 ///
-/// Reads `$XDG_DATA_HOME`; falls back to `$HOME/.local/share`.
+/// - Linux: `$XDG_DATA_HOME/game-smith` (default `~/.local/share/game-smith`)
+/// - Windows: `%APPDATA%\game-smith`
 #[must_use]
 pub fn resolve_data_home() -> String {
-    std::env::var("XDG_DATA_HOME")
-        .unwrap_or_else(|_| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()))
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("APPDATA")
+            .unwrap_or_else(|_| std::env::var("USERPROFILE").unwrap_or_else(|_| String::new()))
+            + "\\game-smith"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let base = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
+            format!("{}/.local/share", std::env::var("HOME").unwrap_or_default())
+        });
+        format!("{base}/game-smith")
+    }
 }
 
 /// The canonical `SQLite` URI for the application database.

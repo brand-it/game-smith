@@ -77,13 +77,35 @@
 <h2 class="mt-8 text-lg font-semibold text-gray-900">{{ t(key="commands-detail-log-output", lang="en-US") }}</h2>
 
 {% if run.is_running %}
-<div class="mt-2 flex items-center gap-2">
+<div id="live-indicator" class="mt-2 flex items-center gap-2">
     <span class="relative flex h-2 w-2">
         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
     </span>
-    <span class="text-sm font-medium text-blue-600" id="live-indicator">{{ t(key="commands-detail-live", lang="en-US") }}</span>
+    <span class="text-sm font-medium text-blue-600">{{ t(key="commands-detail-live", lang="en-US") }}</span>
 </div>
+{% else %}
+<div id="live-indicator" class="mt-2 hidden"></div>
+{% endif %}
+
+<!-- Steam Guard / 2FA action-required banner (hidden until triggered by JS) -->
+<div id="steam-guard-banner" class="mt-4 hidden rounded-lg border border-yellow-300 bg-yellow-50 p-4">
+  <div class="flex items-start gap-3">
+    <svg class="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+    </svg>
+    <div class="flex-1">
+      <p class="font-semibold text-yellow-800">Action required: Steam Guard confirmation</p>
+      <p class="mt-1 text-sm text-yellow-700" id="steam-guard-message">Open the Steam Mobile app on your phone and approve the login request.</p>
+    </div>
+    <button type="button" onclick="document.getElementById('steam-guard-banner').classList.add('hidden')" class="ml-2 flex-shrink-0 text-yellow-500 hover:text-yellow-700" aria-label="Dismiss">
+      <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"/></svg>
+    </button>
+  </div>
+</div>
+
+{% if run.is_running %}
+<p class="mt-2 text-sm text-gray-500 italic hidden" id="final-status"></p>
 {% else %}
 <p class="mt-2 text-sm text-gray-500 italic" id="final-status">
     {{ t(key="commands-detail-completed-status", status=run.status, lang="en-US") }}

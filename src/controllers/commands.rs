@@ -1,5 +1,6 @@
+use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::routing::get;
-use loco_rs::controller::views::{engines::TeraView, ViewEngine};
+use loco_rs::controller::views::ViewEngine;
 use loco_rs::prelude::*;
 
 use crate::data::command_runner::CommandRunner;
@@ -10,7 +11,7 @@ use crate::models::command_runs::Model as CommandRunModel;
 /// Returns a [`loco_rs::Error`] if the database query fails or rendering fails.
 pub async fn list(
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let runs = CommandRunModel::list_recent(&ctx, 100).await?;
     crate::views::commands::list(v, &runs)
@@ -24,7 +25,7 @@ pub async fn list(
 pub async fn show(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
-    ViewEngine(v): ViewEngine<TeraView>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let run = CommandRunModel::find_by_id(&ctx, id)
         .await?

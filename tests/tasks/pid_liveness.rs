@@ -5,6 +5,7 @@ use game_smith::models::game_servers::{
 };
 use loco_rs::boot::run_task;
 use loco_rs::{task, testing::prelude::*};
+use sea_orm::{ActiveModelTrait, ActiveValue};
 use serial_test::serial;
 
 macro_rules! configure_insta {
@@ -87,15 +88,15 @@ async fn test_pid_liveness_marks_dead_run_as_failed() {
     assert!(after.completed_at.is_some());
 }
 
-/// Verify that a command run with no PID is skipped.
+/// Verify that a command run with no PID is marked as Failed.
 #[tokio::test]
 #[serial]
-async fn test_pid_liveness_skips_runs_without_pid() {
+async fn test_pid_liveness_marks_null_pid_as_failed() {
     configure_insta!();
 
     let boot = boot_test::<App>().await.unwrap();
 
-    // Create a running command run with no PID
+    // Create a running command run (create_run sets PID to current process)
     let run = ActiveModel::create_run(
         &boot.app_context,
         "echo".to_string(),
@@ -110,7 +111,22 @@ async fn test_pid_liveness_skips_runs_without_pid() {
     .expect("Failed to create run");
 
     let run_id = run.id;
-    assert_eq!(run.pid, None);
+
+    // Manually set PID to NULL to simulate a run created without process association
+    let mut active: ActiveModel = run.into();
+    active.pid = ActiveValue::Set(None);
+    active
+        .update(&boot.app_context.db)
+        .await
+        .expect("Failed to nullify PID");
+
+    // Verify the run has no PID
+    let before = CommandRunModel::find_by_id(&boot.app_context, run_id)
+        .await
+        .expect("Failed to find run")
+        .expect("Run not found");
+    assert_eq!(before.pid, None);
+    assert_eq!(before.status(), CommandStatus::Running);
 
     // Run the task
     assert!(run_task::<App>(
@@ -121,12 +137,13 @@ async fn test_pid_liveness_skips_runs_without_pid() {
     .await
     .is_ok());
 
-    // Verify the run is still Running (unchanged)
+    // Verify the run is now marked as Failed
     let after = CommandRunModel::find_by_id(&boot.app_context, run_id)
         .await
         .expect("Failed to find run")
         .expect("Run not found");
-    assert_eq!(after.status(), CommandStatus::Running);
+    assert_eq!(after.status(), CommandStatus::Failed);
+    assert!(after.completed_at.is_some());
 }
 
 /// Verify that a command run with a live PID is not touched.
@@ -197,6 +214,7 @@ async fn test_pid_liveness_preserves_server_status() {
         "linux".to_string(),
         None,
         None,
+        false,
     )
     .await
     .expect("Failed to create server");

@@ -1,6 +1,6 @@
 .PHONY: help setup setup-check dev watch \
-	test fmt fmt-check style lint qa \
-	migrate-gen migrate-up build build-css release package package-rpm install run-release clean reset
+	test fmt fmt-check style lint qa check-windows \
+	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset
 
 help:
 	@echo "Usage: make <target>"
@@ -20,6 +20,7 @@ help:
 	@echo "  style         Auto-fix formatting and lint issues"
 	@echo "  lint          Run clippy with strict rules"
 	@echo "  qa            Run fmt-check, lint, and test"
+	@echo "  check-windows Cross-compile check for Windows (requires mingw64-gcc)"
 	@echo ""
 	@echo "Migrations"
 	@echo "  migrate-gen   Generate new migration (NAME=create_games)"
@@ -31,6 +32,7 @@ help:
 	@echo "  release       Production build"
 	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
 	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
+	@echo "  package-msi   Build Windows .msi installer (requires cargo-wix)"
 	@echo ""
 	@echo "Cleanup"
 	@echo "  clean         Remove build artifacts"
@@ -72,8 +74,11 @@ lint:
 	cargo clippy -- -D warnings -W clippy::pedantic -W clippy::nursery -W rust-2018-idioms
 
 qa:
-	@$(MAKE) fmt-check && $(MAKE) lint && $(MAKE) test
+	@$(MAKE) fmt-check && $(MAKE) lint && $(MAKE) test && \
+	(command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 && $(MAKE) check-windows || echo "check-windows skipped (install mingw64-gcc)")
 
+check-windows:
+	cargo check --target x86_64-pc-windows-gnu
 # ── Migrations ─────────────────────────────────────────────────────────
 
 migrate-gen:
@@ -128,6 +133,14 @@ package-rpm: package
 	@ls -1 target/release/game-smith_$(VERSION)* target/release/game-smith-$(VERSION)* \
 	        target/release/x86_64/game-smith-$(VERSION)*.rpm 2>/dev/null | sed 's/^/  /'
 
+
+package-msi:
+	cargo install cargo-wix --locked --quiet 2>/dev/null || true
+	cargo build --release --bin game-smith
+	cargo wix --package game-smith
+	@echo ""
+	@echo "MSI installer built:"
+	@ls -1 target/wix/*.msi 2>/dev/null | sed 's/^/  /'
 
 # ── Install & Run ──────────────────────────────────────────────────────
 

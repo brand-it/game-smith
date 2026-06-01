@@ -66,6 +66,9 @@ cargo test
 # Run single test
 cargo test <test_name> -- --nocapture
 
+
+# Cross-compile check for Windows (requires mingw64-gcc)
+cargo check --target x86_64-pc-windows-gnu
 # Migrations
 cargo run -- generate migration <name>
 ```
@@ -84,6 +87,7 @@ All of the above are available as `make` targets. Run `make help` for the full l
   fmt-check     Check formatting
   lint          Run clippy with strict rules
   qa            Run fmt-check, lint, and test
+  check-windows Cross-compile check for Windows (requires mingw64-gcc)
   migrate-gen   Generate new migration (NAME=create_games)
   migrate-up    Run pending migrations
   build         Build release binary (desktop always included)

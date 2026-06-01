@@ -51,12 +51,12 @@ impl Hooks for App {
         let config = Config {
             logger: loco_rs::config::Logger {
                 enable: true,
-                pretty_backtrace: true,
-                level: loco_rs::logger::LogLevel::Debug,
+                pretty_backtrace: false,
+                level: loco_rs::logger::LogLevel::Info,
                 file_appender: Some(loco_rs::config::LoggerFileAppender {
                     enable: true,
                     non_blocking: true,
-                    level: loco_rs::logger::LogLevel::Debug,
+                    level: loco_rs::logger::LogLevel::Info,
                     format: loco_rs::logger::Format::Json,
                     rotation: loco_rs::logger::Rotation::Daily,
                     dir: Some(logs_dir),
@@ -71,31 +71,16 @@ impl Hooks for App {
                 binding: "127.0.0.1".to_string(),
                 host: "http://127.0.0.1".to_string(),
                 ident: None,
-                middlewares: loco_rs::controller::middleware::Config {
-                    static_assets: Some(
-                        loco_rs::controller::middleware::static_assets::StaticAssets {
-                            enable: true,
-                            must_exist: true,
-                            folder: loco_rs::controller::middleware::static_assets::FolderConfig {
-                                uri: "/static".to_string(),
-                                path: std::path::PathBuf::from("assets/static"),
-                            },
-                            fallback: std::path::PathBuf::from("assets/static/404.html"),
-                            precompressed: false,
-                            cache_control: None,
-                        },
-                    ),
-                    ..Default::default()
-                },
+                middlewares: loco_rs::controller::middleware::Config::default(),
             },
             database: loco_rs::config::Database {
                 uri: super::canonical_db_uri(),
                 enable_logging: false,
-                min_connections: 1,
-                max_connections: 1,
-                connect_timeout: 500,
-                idle_timeout: 500,
-                acquire_timeout: None,
+                min_connections: 2,
+                max_connections: 5,
+                connect_timeout: 5_000,
+                idle_timeout: 600_000,
+                acquire_timeout: Some(5_000),
                 auto_migrate: true,
                 dangerously_truncate: false,
                 dangerously_recreate: false,
@@ -129,7 +114,8 @@ impl Hooks for App {
             Box::new(initializers::secret_key::SecretKeyInitializer),
             Box::new(initializers::db_validator::DbValidator),
             Box::new(initializers::steamcmd::SteamCmdInstaller),
-            Box::new(initializers::view_engine::ViewEngineInitializer),
+            Box::new(initializers::embedded_i18n::EmbeddedI18n),
+            Box::new(initializers::embedded_static::EmbeddedStatic),
             Box::new(initializers::command_log_socket::CommandLogInitializer),
         ])
     }

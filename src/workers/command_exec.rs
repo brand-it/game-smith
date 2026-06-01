@@ -1,12 +1,26 @@
+/// Background worker that spawns game server processes and streams their output to log
+/// files.
+///
+/// On Linux, uses PTY-based streaming via `libc::openpty` for proper terminal behavior.
+/// On Windows, uses `ConPTY` via `portable-pty` with VT cursor-position response to avoid hangs.
 use async_trait::async_trait;
 #[cfg(target_os = "linux")]
 use libc::openpty;
 use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::Result;
+#[cfg(target_os = "windows")]
+use portable_pty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io;
+#[cfg(target_os = "windows")]
+use std::io::Read;
+#[cfg(target_os = "windows")]
+use std::io::Write;
+#[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
+use tokio::io::AsyncRead;
 use tokio::process::Command;
 
 use crate::data::steamcmd::{set_shared_store, SteamCmdHealthStatus};
@@ -16,6 +30,9 @@ use crate::models::game_servers::ServerStatus;
 pub struct CommandExecWorker {
     pub ctx: AppContext,
 }
+
+/// Delay before auto-restarting a game server process (seconds).
+const AUTO_RESTART_DELAY_SECS: u64 = 5;
 
 impl CommandExecWorker {
     /// Load the run record and verify it is still in "running" state.
@@ -37,7 +54,9 @@ impl CommandExecWorker {
     async fn mark_spawn_failed(ctx: &AppContext, run_id: i32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
-            let _ = active.finish(ctx, Some(-1), CommandStatus::Failed).await;
+            if let Err(e) = active.finish(ctx, Some(-1), CommandStatus::Failed).await {
+                tracing::warn!(run_id, error = %e, "failed to mark run as spawn-failed in DB");
+            }
         }
     }
 
@@ -65,7 +84,9 @@ impl CommandExecWorker {
     async fn store_pid(&self, run_id: i32, pid: u32) {
         if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
             let mut active: crate::models::command_runs::ActiveModel = m.into();
-            let _ = active.update_pid(&self.ctx, i64::from(pid)).await;
+            if let Err(e) = active.update_pid(&self.ctx, i64::from(pid)).await {
+                tracing::warn!(run_id, pid, error = %e, "failed to store PID in DB");
+            }
         }
     }
 
@@ -166,17 +187,78 @@ impl CommandExecWorker {
         is_steamcmd && has_runscript
     }
 
-    /// After an install/update command completes, update the associated game
-    /// server's status so it doesn't stay stuck at "installing".
+    /// Returns true if this server should auto-restart after process exit.
+    ///
+    /// Checks that the run is associated with a game server (not an install/
+    /// update command) and that the server's `auto_restart` flag is set.
+    async fn should_auto_restart(&self, run_id: i32) -> bool {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return false;
+        };
+
+        if Self::is_install_update(&model) {
+            return false;
+        }
+
+        let Some(server_id) = model.server_id else {
+            return false;
+        };
+
+        let Ok(server_id_i32) = i32::try_from(server_id) else {
+            return false;
+        };
+
+        let Ok(Some(server)) =
+            crate::models::game_servers::Model::find_by_id(&self.ctx, server_id_i32).await
+        else {
+            return false;
+        };
+
+        server.auto_restart
+    }
+
+    /// Append an auto-restart marker line to the run's log file.
+    async fn write_restart_marker(&self, run_id: i32) {
+        let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
+            return;
+        };
+        let Some(ref log_path) = model.log_path else {
+            return;
+        };
+
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let marker = format!("\n[{timestamp}] Auto-restarting server...\n");
+        if let Err(e) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(log_path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, marker.as_bytes()))
+        {
+            tracing::warn!(run_id, error = %e, "failed to write restart marker to log");
+        }
+    }
+
+    /// Extract the last non-empty line from a log file as an error message.
+    fn last_log_line(model: &CommandRunModel, fallback: &str) -> Option<String> {
+        model
+            .log_path
+            .as_ref()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|content| {
+                content
+                    .lines()
+                    .rev()
+                    .find(|line| !line.trim().is_empty())
+                    .map(String::from)
+            })
+            .or_else(|| Some(fallback.to_string()))
+    }
+
+    /// Update the game server's status after a command run completes.
+    /// Handles both install/update commands and regular server start/stop.
     async fn maybe_update_server_status(&self, run_id: i32, final_status: CommandStatus) {
         let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
             return;
         };
-
-        // Only act on install/update commands
-        if !Self::is_install_update(&model) {
-            return;
-        }
 
         let Some(server_id) = model.server_id else {
             return;
@@ -192,25 +274,27 @@ impl CommandExecWorker {
             return;
         };
 
-        let (new_status, last_error) = match final_status {
-            CommandStatus::Completed => (ServerStatus::Installed, None),
-            CommandStatus::Failed => {
-                // Try to extract the last meaningful error line from the log
-                let last_error = model
-                    .log_path
-                    .as_ref()
-                    .and_then(|path| std::fs::read_to_string(path).ok())
-                    .and_then(|content| {
-                        content
-                            .lines()
-                            .rev()
-                            .find(|line| !line.trim().is_empty())
-                            .map(String::from)
-                    })
-                    .or_else(|| Some("Installation failed".to_string()));
-                (ServerStatus::Error, last_error)
+        let (new_status, last_error) = if Self::is_install_update(&model) {
+            // Install/update command
+            match final_status {
+                CommandStatus::Completed => (ServerStatus::Installed, None),
+                CommandStatus::Failed => {
+                    let last_error = Self::last_log_line(&model, "Installation failed");
+                    (ServerStatus::Error, last_error)
+                }
+                CommandStatus::Running => return,
             }
-            CommandStatus::Running => return,
+        } else {
+            // Start command — update status when the process exits
+            match final_status {
+                CommandStatus::Completed => (ServerStatus::Stopped, None),
+                CommandStatus::Failed => {
+                    let last_error =
+                        Self::last_log_line(&model, "Server process exited with failure");
+                    (ServerStatus::Error, last_error)
+                }
+                CommandStatus::Running => return,
+            }
         };
 
         let mut active: crate::models::game_servers::ActiveModel = server.into();
@@ -222,33 +306,25 @@ impl CommandExecWorker {
                 server_id,
                 %new_status,
                 error = %e,
-                "Failed to update game server status after install"
+                "Failed to update game server status"
             );
         }
     }
-}
 
-/// Arguments for executing a command via [`CommandExecWorker`].
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CommandExecWorkerArgs {
-    pub run_id: i32,
-}
+    /// Spawn a single process and wait for it to exit.
+    ///
+    /// Returns the [`CommandStatus`] and exit code. Does _not_ persist the
+    /// final status — the caller is responsible for that so it can decide
+    /// whether to auto-restart first.
+    #[cfg(target_os = "linux")]
+    async fn spawn_one(
+        &self,
+        run_id: i32,
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let cmd_args = Self::resolve_args(model);
 
-#[async_trait]
-impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
-    fn build(ctx: &AppContext) -> Self {
-        Self { ctx: ctx.clone() }
-    }
-
-    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
-        let CommandExecWorkerArgs { run_id } = args;
-
-        // 1. Validate run exists and is still active
-        let Ok(model) = self.fetch_and_validate(run_id).await else {
-            return Ok(());
-        };
-
-        // 2. Create PTY so child's stdout is line-buffered (real-time output)
+        // Create PTY for line-buffered output
         let mut master_fd: libc::c_int = 0;
         let mut slave_fd: libc::c_int = 0;
         if unsafe {
@@ -266,21 +342,9 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
                 std::io::Error::last_os_error()
             )));
         }
+
         let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
         let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
-        // master_fd and slave_fd are now owned by their respective std::fs::File handles
-
-        // 3. Build the command with PTY as stdout/stderr
-        let cmd_args: Vec<String> = model
-            .args
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default();
 
         let mut cmd = Command::new(&model.command);
         cmd.args(&cmd_args);
@@ -290,14 +354,190 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         cmd.stderr(std::process::Stdio::from(slave.try_clone().map_err(
             |e| loco_rs::Error::string(&format!("failed to clone slave for stderr: {e}")),
         )?));
-        // slave (original) is dropped here, closing the original slave fd in parent
+        // Original slave dropped here — closes slave fd in parent process
+        drop(slave);
+
         cmd.kill_on_drop(true);
 
+        Self::configure_common(&mut cmd, model);
+
+        let mut child = cmd.spawn().map_err(|e| {
+            Self::handle_spawn_error(
+                &self.ctx,
+                run_id,
+                Self::is_health_check(model),
+                &e,
+                e.kind(),
+            )
+        })?;
+
+        if let Some(pid) = child.id() {
+            self.store_pid(run_id, pid).await;
+        }
+
+        // Stream PTY master → log file
+        if let Some(ref lp) = model.log_path {
+            let master = tokio::fs::File::from_std(master);
+            Self::spawn_reader(lp, master);
+        }
+
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
+
+        Ok(Self::determine_status(status))
+    }
+
+    /// Spawn a single process and wait for it to exit (Windows, ConPTY).
+    ///
+    /// Uses `portable-pty` to open a ConPTY pair. This is required because:
+    ///
+    /// - With plain pipes, the Windows CRT detects a non-TTY and switches to
+    ///   64 KB full-buffering, so SteamCMD output is invisible until the process
+    ///   exits (or the buffer fills).
+    /// - ConPTY allocates an invisible pseudo-console that satisfies the CRT's
+    ///   TTY check, so SteamCMD line-buffers and output flows promptly.
+    /// - ConPTY suppresses the visible console window automatically.
+    ///
+    /// The one wrinkle: SteamCMD probes the terminal size by sending `ESC[6n`
+    /// (ANSI Device Status Report / cursor-position query) and blocks until it
+    /// receives a `ESC[row;colR` response. The drain thread watches for this
+    /// sequence and immediately writes the reply back through the master writer,
+    /// so the child never stalls.
+    ///
+    /// Shutdown on demand works via `TerminateProcess` against the stored PID
+    /// (see `kill_pid`). The PTY pair is dropped after the child exits, which
+    /// closes the pseudo-console and signals EOF to the drain thread.
+    #[cfg(target_os = "windows")]
+    async fn spawn_one(
+        &self,
+        run_id: i32,
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let cmd_args = Self::resolve_args(model);
+
+        // Open a ConPTY pair. The child sees a real terminal (no console window
+        // appears — ConPTY creates a headless pseudo-console).
+        let pty_system = portable_pty::native_pty_system();
+        let pair = pty_system
+            .openpty(portable_pty::PtySize {
+                rows: 25,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| loco_rs::Error::string(&format!("failed to create pty: {e}")))?;
+
+        let mut cmd = portable_pty::CommandBuilder::new(&model.command);
+        cmd.args(&cmd_args);
+        if let Some(dir) = &model.working_dir {
+            cmd.cwd(dir);
+        }
+        if let Some(ref env_json) = model.env {
+            if let Ok(variables) =
+                serde_json::from_value::<HashMap<String, String>>(env_json.clone())
+            {
+                for (key, value) in variables {
+                    cmd.env(&key, &value);
+                }
+            }
+        }
+
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
+            Self::handle_spawn_error(
+                &self.ctx,
+                run_id,
+                Self::is_health_check(model),
+                &e,
+                io::ErrorKind::Other,
+            )
+        })?;
+
+        if let Some(pid) = child.process_id() {
+            self.store_pid(run_id, pid).await;
+        }
+
+        // Obtain a reader and a writer for the PTY master.
+        // Reader: receives the child's output.
+        // Writer: sends input to the child (used to reply to VT queries).
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
+        let mut writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| loco_rs::Error::string(&format!("failed to take pty writer: {e}")))?;
+
+        let log_path = model.log_path.clone();
+
+        // Drain thread: read PTY output, reply to ESC[6n, write to log file.
+        // See drain_pty_output for the full description of the algorithm.
+        let drain_handle = std::thread::spawn(move || {
+            let log_writer = log_path.as_deref().and_then(|p| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(p)
+                    .ok()
+            });
+            drain_pty_output(reader, writer, log_writer);
+        });
+
+        // Poll for child exit non-blocking so the drain thread can run
+        // concurrently and keep the PTY buffer empty.
+        let exit_status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                Err(e) => {
+                    return Err(loco_rs::Error::string(&format!(
+                        "failed to poll process status: {e}"
+                    )));
+                }
+            }
+        };
+
+        // Drop the PTY pair to close the ConPTY — this signals EOF to the
+        // drain thread's reader so it exits cleanly.
+        drop(pair);
+        let _ = drain_handle.join();
+
+        Ok(Self::determine_pty_status(exit_status))
+    }
+
+    /// Map a [`portable_pty::ExitStatus`] to our internal status tuple.
+    #[cfg(target_os = "windows")]
+    fn determine_pty_status(status: portable_pty::ExitStatus) -> (CommandStatus, Option<i32>) {
+        if status.success() {
+            (CommandStatus::Completed, Some(0))
+        } else {
+            let code = status.exit_code() as i32;
+            (CommandStatus::Failed, Some(code))
+        }
+    }
+
+    /// Parse args from the `SeaORM` JSON array.
+    fn resolve_args(model: &CommandRunModel) -> Vec<String> {
+        model
+            .args
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Apply platform-agnostic command configuration: working directory and
+    /// environment variables from the [`CommandRunModel`].
+    fn configure_common(cmd: &mut Command, model: &CommandRunModel) {
         if let Some(dir) = &model.working_dir {
             cmd.current_dir(dir);
         }
-
-        if let Some(env_json) = &model.env {
+        if let Some(ref env_json) = model.env {
             if let Ok(variables) =
                 serde_json::from_value::<HashMap<String, String>>(env_json.clone())
             {
@@ -306,51 +546,113 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
                 }
             }
         }
+    }
 
-        // 4. Spawn the process
-        let mut child = cmd.spawn().map_err(|e| {
-            let ctx = self.ctx.clone();
-            let rid = run_id;
-            let is_health_check = Self::is_health_check(&model);
-            let error_msg = e.to_string();
-            let kind = e.kind();
-            let error_for_log = error_msg.clone();
-            tokio::spawn(async move {
-                Self::_log_spawn_failed(&ctx, rid, is_health_check, &error_for_log, kind).await;
-            });
-            loco_rs::Error::string(&format!("failed to spawn process: {error_msg}"))
-        })?;
+    /// Handle spawn failure: log the error asynchronously and return a
+    /// [`loco_rs::Error`].
+    fn handle_spawn_error<E>(
+        ctx: &AppContext,
+        run_id: i32,
+        is_health_check: bool,
+        e: &E,
+        kind: io::ErrorKind,
+    ) -> loco_rs::Error
+    where
+        E: std::fmt::Display,
+    {
+        let ctx = ctx.clone();
+        let rid = run_id;
+        let msg = e.to_string();
+        tokio::spawn(async move {
+            Self::_log_spawn_failed(&ctx, rid, is_health_check, &msg, kind).await;
+        });
+        loco_rs::Error::string(&format!("failed to spawn process: {e}"))
+    }
 
-        // 5. Store PID in database
-        if let Some(pid) = child.id() {
-            self.store_pid(run_id, pid).await;
-        }
-
-        // 6. Read PTY master into log file (if log path is configured)
-        let log_path = model.log_path.clone();
-        if let Some(log_path) = &log_path {
-            let log_file = std::fs::File::create(log_path)
-                .map_err(|e| loco_rs::Error::string(&format!("failed to create log file: {e}")))?;
+    /// Spawn a background task that copies output from an [`AsyncRead`] stream
+    /// into the run's log file. Used for PTY master on Linux.
+    fn spawn_reader<R>(log_path: &str, reader: R)
+    where
+        R: AsyncRead + Send + 'static,
+    {
+        let lp = log_path.to_string();
+        if let Ok(log_file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+        {
             let log_file = tokio::fs::File::from_std(log_file);
-            let master = tokio::fs::File::from_std(master);
-            let log_path_str = log_path.clone();
+            tracing::debug!(log_path = %lp, "log reader started");
             tokio::spawn(async move {
-                let mut master = tokio::io::BufReader::new(master);
+                let mut reader = Box::pin(reader);
                 let mut log_file = log_file;
-                if let Err(e) = tokio::io::copy_buf(&mut master, &mut log_file).await {
-                    tracing::warn!(%log_path_str, error = %e, "PTY reader failed");
+                if let Err(e) = tokio::io::copy(&mut reader, &mut log_file).await {
+                    tracing::warn!(%lp, error = %e, "log reader failed");
+                } else {
+                    tracing::debug!(log_path = %lp, "log reader completed");
                 }
             });
         }
+    }
 
-        // 7. Wait for completion
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| loco_rs::Error::string(&format!("failed to wait for process: {e}")))?;
+    /// Main execution loop: spawn the process, wait for it, auto-restart if
+    /// configured.
+    ///
+    /// Keeps the same command run record (same `run_id`) across restarts,
+    /// appending restart markers to the log and updating the stored PID each
+    /// time a new process is spawned.
+    async fn perform_inner(
+        &self,
+        run_id: i32,
+        model: &CommandRunModel,
+    ) -> Result<(CommandStatus, Option<i32>)> {
+        let result = loop {
+            let (status, exit_code) = self.spawn_one(run_id, model).await?;
 
-        // 8. Determine and persist final status
-        let (final_status, exit_code) = Self::determine_status(status);
+            if !self.should_auto_restart(run_id).await {
+                break Ok((status, exit_code));
+            }
+
+            // Run was manually stopped — don't restart
+            let updated = CommandRunModel::find_by_id(&self.ctx, run_id).await;
+            if let Ok(Some(m)) = updated {
+                if !m.is_running() {
+                    break Ok((status, exit_code));
+                }
+            }
+
+            tracing::info!(run_id, "auto-restarting game server process");
+            self.write_restart_marker(run_id).await;
+            tokio::time::sleep(std::time::Duration::from_secs(AUTO_RESTART_DELAY_SECS)).await;
+        };
+        result
+    }
+}
+
+/// Arguments for executing a command via [`CommandExecWorker`].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommandExecWorkerArgs {
+    pub run_id: i32,
+}
+
+#[async_trait]
+impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
+    fn build(ctx: &AppContext) -> Self {
+        Self { ctx: ctx.clone() }
+    }
+
+    /// Fetches the command run, executes (potentially auto-restarting), then
+    /// updates final status. Platform-specific spawning is handled by
+    /// [`spawn_one`].
+    async fn perform(&self, args: CommandExecWorkerArgs) -> Result<()> {
+        let CommandExecWorkerArgs { run_id } = args;
+
+        let Ok(model) = self.fetch_and_validate(run_id).await else {
+            return Ok(());
+        };
+
+        let (final_status, exit_code) = self.perform_inner(run_id, &model).await?;
+
         self.update_final_status(run_id, exit_code, final_status)
             .await?;
         self.maybe_update_health_status(run_id, final_status, exit_code)
@@ -358,5 +660,230 @@ impl BackgroundWorker<CommandExecWorkerArgs> for CommandExecWorker {
         self.maybe_update_server_status(run_id, final_status).await;
 
         Ok(())
+    }
+}
+
+/// Drain PTY master output: forward to log file and reply to ANSI DSR queries.
+///
+/// Reads `reader` until EOF, writing non-DSR bytes to `log_writer`. When an
+/// `ESC[6n` (Device Status Report / cursor-position query) is detected — even
+/// across read-call boundaries — an `ESC[1;1R` CPR reply is written to `writer`
+/// so the child process never stalls waiting for a terminal response.
+///
+/// The DSR byte sequence is stripped from the log so raw escape bytes do not
+/// appear in the visible output.
+///
+/// # Arguments
+/// * `reader`     — source of PTY output (from `portable_pty` or a pipe in tests).
+/// * `writer`     — sink for CPR replies (to `portable_pty` master writer or pipe).
+/// * `log_writer` — optional buffered sink for cleaned log output.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn drain_pty_output(
+    mut reader: impl std::io::Read,
+    mut writer: impl std::io::Write,
+    mut log_writer: Option<impl std::io::Write>,
+) {
+    // ESC[6n  — ANSI DSR cursor-position query sent by child.
+    const DSR: &[u8] = b"\x1b[6n";
+    // ESC[1;1R — CPR response: row 1, col 1.
+    const CPR: &[u8] = b"\x1b[1;1R";
+    // Ring buffer to detect DSR split across read boundaries.
+    // Holds up to DSR.len() - 1 bytes of unconfirmed suffix from the previous chunk.
+    let mut pending: Vec<u8> = Vec::with_capacity(DSR.len() - 1);
+
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                // Combine leftover tail from last chunk with new data so we
+                // can detect DSR sequences that straddle a read boundary.
+                let mut window: Vec<u8> = pending.clone();
+                window.extend_from_slice(&buf[..n]);
+
+                let mut log_out: Vec<u8> = Vec::with_capacity(window.len());
+                let mut i = 0usize;
+                while i < window.len() {
+                    // Check if DSR starts at position i.
+                    if window[i..].starts_with(DSR) {
+                        // Send CPR reply; swallow the DSR bytes from the log.
+                        if let Err(e) = writer.write_all(CPR) {
+                            tracing::warn!(error = %e, "failed to write CPR reply to PTY master");
+                        }
+                        i += DSR.len();
+                    } else if DSR.starts_with(&window[i..]) && i + DSR.len() > window.len() {
+                        // Possible DSR prefix at the very end of the window —
+                        // don't write it to the log yet; carry it forward.
+                        break;
+                    } else {
+                        log_out.push(window[i]);
+                        i += 1;
+                    }
+                }
+                // Save whatever we didn't consume as the new pending tail.
+                pending = window[i..].to_vec();
+
+                if let Some(ref mut w) = log_writer {
+                    if let Err(e) = w.write_all(&log_out) {
+                        tracing::warn!(error = %e, "failed to write PTY output to log file");
+                    } else if let Err(e) = w.flush() {
+                        tracing::warn!(error = %e, "failed to flush PTY output to log file");
+                    }
+                }
+            }
+        }
+    }
+    // Flush any unconsumed pending bytes (partial non-DSR tail) to the log.
+    if !pending.is_empty() {
+        if let Some(ref mut w) = log_writer {
+            if let Err(e) = w.write_all(&pending) {
+                tracing::warn!(error = %e, "failed to write final PTY bytes to log file");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    /// Run drain_pty_output with in-memory reader/writer and collect results.
+    fn drain(input: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+        drain_pty_output(input, &mut replies, Some(&mut log));
+        (replies, log)
+    }
+
+    // ── DSR reply ────────────────────────────────────────────────────────────
+
+    /// A lone ESC[6n must produce exactly one ESC[1;1R reply.
+    #[test]
+    fn dsr_single_produces_reply() {
+        let (replies, _log) = drain(b"\x1b[6n");
+        assert_eq!(replies, b"\x1b[1;1R", "expected CPR reply");
+    }
+
+    /// Two DSR queries in one read must produce two CPR replies.
+    #[test]
+    fn dsr_double_produces_two_replies() {
+        let (replies, _log) = drain(b"\x1b[6n\x1b[6n");
+        assert_eq!(replies, b"\x1b[1;1R\x1b[1;1R");
+    }
+
+    // ── DSR filtered from log ─────────────────────────────────────────────────
+
+    /// ESC[6n bytes must NOT appear in the log output.
+    #[test]
+    fn dsr_not_written_to_log() {
+        let (_replies, log) = drain(b"hello\x1b[6nworld");
+        assert_eq!(log, b"helloworld", "DSR must be stripped from log");
+        assert!(!log.contains(&0x1b), "no escape bytes in log");
+    }
+
+    /// Pure log content (no DSR) is written through unmodified.
+    #[test]
+    fn plain_text_passes_through() {
+        let (_replies, log) = drain(b"Loading Steam API...OK\n");
+        assert_eq!(log, b"Loading Steam API...OK\n");
+    }
+
+    // ── split-read detection ──────────────────────────────────────────────────
+
+    /// ESC[6n split as [ESC] then [[6n] across two separate reads must still
+    /// produce one CPR reply and no DSR bytes in the log.
+    #[test]
+    fn dsr_split_across_reads_produces_reply() {
+        // Simulate two reads by concatenating with a sentinel that forces
+        // the ring buffer path: feed bytes one at a time.
+        let input = b"\x1b[6n";
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+
+        // Use a cursor over byte-at-a-time chunks via a custom reader.
+        struct ByteByByte<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+        impl std::io::Read for ByteByByte<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() {
+                    return Ok(0);
+                }
+                buf[0] = self.data[self.pos];
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+
+        drain_pty_output(
+            ByteByByte {
+                data: input,
+                pos: 0,
+            },
+            &mut replies,
+            Some(&mut log),
+        );
+
+        assert_eq!(replies, b"\x1b[1;1R", "split DSR must still get a reply");
+        assert!(!log.contains(&0x1b), "split DSR must not appear in log");
+        assert!(log.is_empty(), "no other bytes to log");
+    }
+
+    /// ESC[6n split as [ESC[] then [6n] across two reads (2+2 byte split).
+    #[test]
+    fn dsr_split_two_plus_two_produces_reply() {
+        let input = b"AB\x1b[6nCD";
+        let mut replies: Vec<u8> = Vec::new();
+        let mut log: Vec<u8> = Vec::new();
+
+        // Feed in two-byte chunks.
+        struct TwoBytes<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+        impl std::io::Read for TwoBytes<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() {
+                    return Ok(0);
+                }
+                let n = std::cmp::min(2, self.data.len() - self.pos);
+                buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+                self.pos += n;
+                Ok(n)
+            }
+        }
+
+        drain_pty_output(
+            TwoBytes {
+                data: input,
+                pos: 0,
+            },
+            &mut replies,
+            Some(&mut log),
+        );
+
+        assert_eq!(replies, b"\x1b[1;1R");
+        assert_eq!(log, b"ABCD", "surrounding bytes intact, DSR stripped");
+    }
+
+    // ── no DSR, no reply ─────────────────────────────────────────────────────
+
+    /// Output with no DSR query must produce no replies.
+    #[test]
+    fn no_dsr_no_reply() {
+        let (replies, log) = drain(b"Waiting for confirmation...\n");
+        assert!(replies.is_empty());
+        assert_eq!(log, b"Waiting for confirmation...\n");
+    }
+
+    /// Empty input must produce no replies and empty log.
+    #[test]
+    fn empty_input() {
+        let (replies, log) = drain(b"");
+        assert!(replies.is_empty());
+        assert!(log.is_empty());
     }
 }
