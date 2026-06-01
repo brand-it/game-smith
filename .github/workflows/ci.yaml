@@ -66,3 +66,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb
       - run: xvfb-run cargo test --all-features --all
+
+  version-check:
+    name: Check Version Sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check VERSION matches Cargo.toml
+        run: |
+          version_file=$(cat VERSION)
+          version_cargo=$(grep '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$version_file" != "$version_cargo" ]; then
+            echo "::error::VERSION ($version_file) does not match Cargo.toml ($version_cargo)"
+            exit 1
+          fi
