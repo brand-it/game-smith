@@ -4,6 +4,7 @@ nav-servers = Game Servers
 nav-steamcmd = SteamCMD
 nav-commands = Commands
 nav-steam-config = Steam Credentials
+nav-autostart = Autostart
 
 hello-world = Hello World!
 greeting = Hello { $name }!

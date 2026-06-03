@@ -1,8 +1,9 @@
 //! Desktop integration module.
 //!
-//! Provides system tray icon, desktop notifications, and browser auto-open.
+//! Provides system tray icon, desktop notifications, autostart, and browser auto-open.
 //! Supports Linux (GTK) and Windows (Win32).
 
+pub mod autostart;
 mod notifications;
 mod tray;
 use tray_icon::TrayIconBuilder;
@@ -117,7 +118,7 @@ impl DesktopManager {
 
             let tray_state = tray::Tray::new(server_url);
             let icon = tray::Tray::icon();
-            let menu = tray::Tray::menu();
+            let menu = tray::Tray::menu(autostart::is_enabled().unwrap_or(false));
 
             let system_tray = match TrayIconBuilder::new()
                 .with_id("game-smith")

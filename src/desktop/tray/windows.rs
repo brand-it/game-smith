@@ -18,12 +18,12 @@ use super::dispatch_menu;
 /// menu click), then we drain the menu event channel and dispatch.
 pub fn run_event_loop(server_url: String, tray: TrayIcon) -> ! {
     let rx_menu = MenuEvent::receiver().clone();
-    let _keep_alive = tray;
+    let tray_clone = tray.clone();
 
     let mut msg = unsafe { MaybeUninit::<MSG>::zeroed().assume_init() };
     loop {
         while let Ok(event) = rx_menu.try_recv() {
-            dispatch_menu(&event, &server_url);
+            dispatch_menu(&event, &server_url, &tray_clone);
         }
         // Blocks until a window message is posted.
         // Returns `FALSE` only on WM_QUIT — unreachable here.
