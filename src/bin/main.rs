@@ -15,8 +15,50 @@ fn should_start_server() -> bool {
     matches!(std::env::args().nth(1).as_deref(), Some("start") | None)
 }
 
+/// Handle autostart subcommands early (before server or CLI bootstrap).
+fn handle_autostart_subcommand() -> bool {
+    match std::env::args().nth(1).as_deref() {
+        Some("autostart-enable") => {
+            if let Err(e) = game_smith::desktop::autostart::enable() {
+                eprintln!("game-smith: failed to enable autostart: {e}");
+                return true;
+            }
+            eprintln!("game-smith: autostart enabled");
+            true
+        }
+        Some("autostart-disable") => {
+            if let Err(e) = game_smith::desktop::autostart::disable() {
+                eprintln!("game-smith: failed to disable autostart: {e}");
+                return true;
+            }
+            eprintln!("game-smith: autostart disabled");
+            true
+        }
+        Some("autostart-is-enabled") => {
+            let enabled = match game_smith::desktop::autostart::is_enabled() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("game-smith: failed to check autostart status: {e}");
+                    return true;
+                }
+            };
+            eprintln!(
+                "game-smith: autostart is {}",
+                if enabled { "enabled" } else { "disabled" }
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 fn main() -> Result<()> {
     game_smith::install_panic_hook();
+
+    // Handle autostart subcommands before any server or CLI bootstrap.
+    if handle_autostart_subcommand() {
+        return Ok(());
+    }
 
     // Resolve app data directories once; reuse for dirs and boot log.
     let dirs = AppDirs::new(resolve_data_home());

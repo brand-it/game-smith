@@ -20,6 +20,8 @@ pub use windows::run_event_loop;
 
 /// Menu item identifier for the "Open Dashboard" action.
 const MENU_OPEN: &str = "open";
+/// Menu item identifier for toggling autostart.
+const MENU_AUTOSTART: &str = "autostart";
 /// Menu item identifier for the "Quit" action.
 const MENU_QUIT: &str = "quit";
 
@@ -72,13 +74,22 @@ impl Tray {
     }
 
     /// Builds the context menu with "Open Dashboard" and "Quit" items.
+    ///
+    /// The `autostart_enabled` parameter controls the label shown for the
+    /// autostart toggle so the user can see the current state at a glance.
     #[must_use]
-    pub fn menu() -> Menu {
+    pub fn menu(autostart_enabled: bool) -> Menu {
         let open_item = MenuItem::with_id(MENU_OPEN, "Open Dashboard", true, None);
+        let autostart_label = if autostart_enabled {
+            "Autostart: Enabled"
+        } else {
+            "Autostart: Disabled"
+        };
+        let autostart_item = MenuItem::with_id(MENU_AUTOSTART, autostart_label, true, None);
         let quit_item = MenuItem::with_id(MENU_QUIT, "Quit", true, None);
 
         let menu = Menu::new();
-        let _ = menu.append_items(&[&open_item, &quit_item]);
+        let _ = menu.append_items(&[&open_item, &autostart_item, &quit_item]);
 
         menu
     }
@@ -95,10 +106,10 @@ impl Tray {
     }
 }
 
-/// Dispatch a menu event using the given server URL.
+/// Dispatch a menu event using the given server URL and tray icon.
 ///
 /// Used inside event-loop closures where `self` has been moved.
-fn dispatch_menu(event: &MenuEvent, server_url: &str) {
+fn dispatch_menu(event: &MenuEvent, server_url: &str, tray: &TrayIcon) {
     use std::process;
 
     match event.id.as_ref() {
@@ -107,6 +118,30 @@ fn dispatch_menu(event: &MenuEvent, server_url: &str) {
         }
         MENU_QUIT => {
             process::exit(0);
+        }
+        MENU_AUTOSTART => {
+            let was_enabled = super::autostart::is_enabled().unwrap_or(false);
+            let result = if was_enabled {
+                super::autostart::disable()
+            } else {
+                super::autostart::enable()
+            };
+            // Re-query the actual state after the operation to avoid
+            // assuming the toggle succeeded.
+            let now_enabled = super::autostart::is_enabled().unwrap_or(was_enabled);
+            match result {
+                Ok(()) => {
+                    eprintln!(
+                        "game-smith: autostart {}",
+                        if now_enabled { "enabled" } else { "disabled" }
+                    );
+                }
+                Err(e) => {
+                    eprintln!("game-smith: failed to toggle autostart: {e}");
+                }
+            }
+            // Rebuild the menu so the autostart label reflects the new state.
+            tray.set_menu(Some(Box::new(Tray::menu(now_enabled))));
         }
         _ => {}
     }

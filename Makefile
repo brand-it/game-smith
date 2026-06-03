@@ -1,7 +1,7 @@
 .PHONY: help setup setup-check dev watch \
 	test fmt fmt-check style lint qa check-windows \
-	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset
-
+	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset \
+	install-autostart uninstall-autostart
 help:
 	@echo "Usage: make <target>"
 	@echo ""
@@ -33,6 +33,10 @@ help:
 	@echo "  package       Build .deb and .AppImage packages (requires cargo-packager)"
 	@echo "  package-rpm   Build .rpm package via podman (requires podman)"
 	@echo "  package-msi   Build Windows .msi installer (requires cargo-wix)"
+	@echo ""
+	@echo "Install"
+	@echo "  install-autostart     Enable autostart on boot"
+	@echo "  uninstall-autostart   Disable autostart on boot"
 	@echo ""
 	@echo "Cleanup"
 	@echo "  clean         Remove build artifacts"
@@ -155,6 +159,13 @@ run-release: release
 	./target/release/game-smith start
 release:
 	cargo build --release
+
+# Enable/disable autostart on boot (requires installed binary)
+install-autostart:
+	$(HOME)/.local/bin/game-smith autostart-enable
+
+uninstall-autostart:
+	$(HOME)/.local/bin/game-smith autostart-disable
 
 # ── Cleanup ────────────────────────────────────────────────────────────
 
