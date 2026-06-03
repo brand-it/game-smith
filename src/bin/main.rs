@@ -8,6 +8,7 @@ use loco_rs::boot::{create_app, start, ServeParams, StartMode};
 use loco_rs::cli;
 use loco_rs::Result;
 use migration::Migrator;
+use tracing::{error, info};
 
 /// Determine whether the current invocation should boot the server.
 /// Defaults to `start` when no subcommand is given.
@@ -20,29 +21,29 @@ fn handle_autostart_subcommand() -> bool {
     match std::env::args().nth(1).as_deref() {
         Some("autostart-enable") => {
             if let Err(e) = game_smith::desktop::autostart::enable() {
-                eprintln!("game-smith: failed to enable autostart: {e}");
+                error!("game-smith: failed to enable autostart: {e}");
                 return true;
             }
-            eprintln!("game-smith: autostart enabled");
+            info!("game-smith: autostart enabled");
             true
         }
         Some("autostart-disable") => {
             if let Err(e) = game_smith::desktop::autostart::disable() {
-                eprintln!("game-smith: failed to disable autostart: {e}");
+                error!("game-smith: failed to disable autostart: {e}");
                 return true;
             }
-            eprintln!("game-smith: autostart disabled");
+            info!("game-smith: autostart disabled");
             true
         }
         Some("autostart-is-enabled") => {
             let enabled = match game_smith::desktop::autostart::is_enabled() {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("game-smith: failed to check autostart status: {e}");
+                    error!("game-smith: failed to check autostart status: {e}");
                     return true;
                 }
             };
-            eprintln!(
+            info!(
                 "game-smith: autostart is {}",
                 if enabled { "enabled" } else { "disabled" }
             );
