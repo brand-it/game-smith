@@ -359,6 +359,20 @@ impl CommandExecWorker {
 
         cmd.kill_on_drop(true);
 
+        // Put the child in its own process group so we can terminate the
+        // entire process tree (including grandchildren) during shutdown.
+        #[cfg(target_os = "linux")]
+        unsafe {
+            cmd.pre_exec(|| {
+                let ret = libc::setpgid(0, 0);
+                if ret != 0 {
+                    Err(std::io::Error::last_os_error())
+                } else {
+                    Ok(())
+                }
+            });
+        }
+
         Self::configure_common(&mut cmd, model);
 
         let mut child = cmd.spawn().map_err(|e| {

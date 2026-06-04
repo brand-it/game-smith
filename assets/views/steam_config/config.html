@@ -25,6 +25,21 @@
 </div>
 {% endif %}
 
+{% if success %}
+<div class="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+        </div>
+        <div class="ml-3">
+            <p class="text-sm text-green-800">{{ success }}</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <form method="post" action="/steam-config" class="mt-6 space-y-6">
     <div>
         <label for="steam_username" class="block text-sm font-medium text-gray-700">
@@ -64,5 +79,22 @@
         </button>
     </div>
 </form>
+
+{% if username %}
+<div class="mt-8 border-t border-gray-200 pt-6">
+    <h2 class="text-lg font-medium text-gray-900">Clear Credentials</h2>
+    <p class="mt-1 text-sm text-gray-600">
+        Remove your stored Steam account credentials. Existing servers using Steam login will no longer be able to authenticate until new credentials are configured.
+    </p>
+    <form method="post" action="/steam-config/clear" class="mt-4" onsubmit="return confirm('Are you sure you want to clear your Steam credentials?')">
+        <button
+            type="submit"
+            class="inline-flex items-center rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+        >
+            Clear Credentials
+        </button>
+    </form>
+</div>
+{% endif %}
 
 {% endblock %}

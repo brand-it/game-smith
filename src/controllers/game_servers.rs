@@ -198,22 +198,10 @@ pub async fn start_server(
         return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
     }
 
-    let installer = GameServerInstaller::new(&ctx);
-    if installer
-        .start(&server)
+    server
+        .start(&ctx)
         .await
-        .map_err(|e| StandardError::InternalServerError(format!("failed to start server: {e}")))?
-        .is_some()
-    {
-        // Update server status to running only if we actually started something.
-        // PID is tracked asynchronously by CommandExecWorker.
-        if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {
-            let mut active: game_servers::ActiveModel = active_server.into();
-            let _ = active
-                .update_status(&ctx, ServerStatus::Running, None)
-                .await;
-        }
-    }
+        .map_err(|e| StandardError::InternalServerError(format!("failed to start server: {e}")))?;
 
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
@@ -294,6 +282,11 @@ pub async fn update_boot_script(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+    if game_servers::is_alive(&ctx, &server).await {
+        return Err(StandardError::BadRequest(
+            "Cannot update settings while server is running. Stop the server first.".into(),
+        ));
+    }
 
     let mut active: game_servers::ActiveModel = server.into();
     active
@@ -367,6 +360,11 @@ pub async fn update_auto_restart(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+    if game_servers::is_alive(&ctx, &server).await {
+        return Err(StandardError::BadRequest(
+            "Cannot update settings while server is running. Stop the server first.".into(),
+        ));
+    }
 
     let mut active: game_servers::ActiveModel = server.into();
     active
@@ -379,10 +377,101 @@ pub async fn update_auto_restart(
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
 
+/// POST /servers/:id/auto-start — update the auto-start setting.
+///
+/// # Errors
+/// Returns a [`StandardError`] if the server is not found.
+pub async fn update_auto_start(
+    Path(id): Path<i32>,
+    State(ctx): State<AppContext>,
+    request: axum::extract::Request,
+) -> Result<impl IntoResponse, StandardError> {
+    let body_bytes = axum::body::to_bytes(request.into_body(), 8192)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to read request body: {e}"))
+        })?;
+    let body_text = String::from_utf8_lossy(&body_bytes);
+    let auto_start = body_text.contains("auto_start=true");
+
+    let server = game_servers::Model::find_by_id(&ctx, id)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+    if game_servers::is_alive(&ctx, &server).await {
+        return Err(StandardError::BadRequest(
+            "Cannot update settings while server is running. Stop the server first.".into(),
+        ));
+    }
+
+    let mut active: game_servers::ActiveModel = server.into();
+    active
+        .update_auto_start(&ctx, auto_start)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to update auto-start: {e}"))
+        })?;
+
+    Ok(Redirect::to(&format!("/servers/{id}")).into_response())
+}
+
+/// POST /servers/:id/settings — update game server settings.
+///
+/// # Errors
+/// Returns a [`StandardError`] if the server is not found or update fails.
+pub async fn update_settings(
+    Path(id): Path<i32>,
+    State(ctx): State<AppContext>,
+    Form(form): Form<UpdateSettingsForm>,
+) -> Result<impl IntoResponse, StandardError> {
+    let server = game_servers::Model::find_by_id(&ctx, id)
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to find game server: {e}"))
+        })?
+        .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
+
+    if game_servers::is_alive(&ctx, &server).await {
+        return Err(StandardError::BadRequest(
+            "Cannot update settings while server is running. Stop the server first.".into(),
+        ));
+    }
+
+    let mut active: game_servers::ActiveModel = server.into();
+    active
+        .update_settings(
+            &ctx,
+            form.name,
+            form.install_dir,
+            form.server_mod,
+            form.beta_branch,
+            form.use_steam_login,
+        )
+        .await
+        .map_err(|e| {
+            StandardError::InternalServerError(format!("failed to update settings: {e}"))
+        })?;
+
+    Ok(Redirect::to(&format!("/servers/{id}")).into_response())
+}
+
 /// Form data for updating the boot script.
 #[derive(Debug, Deserialize)]
 pub struct BootScriptForm {
     pub boot_script: String,
+}
+
+/// Form data for updating game server settings.
+#[derive(Debug, Deserialize)]
+pub struct UpdateSettingsForm {
+    pub name: String,
+    pub install_dir: String,
+    pub server_mod: Option<String>,
+    pub beta_branch: Option<String>,
+    #[serde(default = "default_false")]
+    pub use_steam_login: bool,
 }
 
 /// Register the game server routes.
@@ -399,6 +488,8 @@ pub fn routes() -> Routes {
         .add("/{id}/boot-script", post(update_boot_script))
         .add("/{id}/delete", post(delete_server))
         .add("/{id}/auto-restart", post(update_auto_restart))
+        .add("/{id}/auto-start", post(update_auto_start))
+        .add("/{id}/settings", post(update_settings))
 }
 
 /// Save or update Steam credentials in the database.

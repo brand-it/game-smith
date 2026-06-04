@@ -11,127 +11,250 @@
 
 {% block content %}
 <div class="mb-6">
-    <a href="/servers" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
+    <a href="/servers"
+        class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr;
+        {{ t(key="servers-back", lang="en-US") }}</a>
     <div class="flex items-center gap-3 mt-2">
         <h1 class="text-2xl font-bold text-slate-900 m-0">{{ server.name }}</h1>
         {{ macros::status_badge(status=server.status) }}
     </div>
 </div>
 
+<!-- 2-column layout: Server Settings (left, full height) | Actions + Settings (right, stacked) -->
 <div class="grid grid-cols-2 gap-5 mb-5">
-
-    <!-- Server Info -->
+    <!-- Server Settings (left column, full height) -->
     <div class="bg-white border border-gray-200 rounded-lg p-6">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{ t(key="servers-info", lang="en-US") }}</h2>
-        <dl>
-            <div class="py-2 border-b border-gray-100">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-app-id", lang="en-US") }}</dt>
-                <dd class="text-sm text-slate-900 m-0 font-mono">{{ server.app_id }}</dd>
+        <h2
+            class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{
+            t(key="servers-edit-settings", lang="en-US") }}</h2>
+        {% if server.is_running %}
+        <p class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
+            {{ t(key="servers-running-locked", lang="en-US") }}
+        </p>
+        {% endif %}
+        <form action="/servers/{{ server.id }}/settings" method="post">
+            <!-- App ID (read-only) -->
+            <div class="mb-4">
+                <label for="app_id"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-app-id", lang="en-US") }}</label>
+                <input type="text" id="app_id" value="{{ server.app_id }}"
+                    disabled
+                    class="block w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed">
             </div>
-            <div class="py-2 border-b border-gray-100">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-platform", lang="en-US") }}</dt>
-                <dd class="text-sm text-slate-900 m-0">{{ server.platform }}</dd>
+            <!-- Server Name -->
+            <div class="mb-4">
+                <label for="name"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-name", lang="en-US") }}</label>
+                <input type="text" name="name" id="name" {% if not
+                    server.is_running %}required{% endif %}
+                    value="{{ server.name }}" {% if server.is_running
+                    %}disabled{% endif %}
+                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
             </div>
-            <div class="py-2{% if server.server_mod or server.beta_branch or server.last_error %} border-b border-gray-100{% endif %}">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-install-dir", lang="en-US") }}</dt>
-                <dd class="text-xs text-slate-900 m-0 font-mono break-all">{{ server.install_dir }}</dd>
+            <!-- Platform (read-only) -->
+            <div class="mb-4">
+                <label for="platform"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-platform", lang="en-US") }}</label>
+                <input type="text" id="platform" value="{{ server.platform }}"
+                    disabled
+                    class="block w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed">
             </div>
-            {% if server.server_mod %}
-            <div class="py-2{% if server.beta_branch or server.last_error %} border-b border-gray-100{% endif %}">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-mod", lang="en-US") }}</dt>
-                <dd class="text-sm text-slate-900 m-0">{{ server.server_mod }}</dd>
+            <!-- Install Directory -->
+            <div class="mb-4">
+                <label for="install_dir"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-install-dir", lang="en-US") }}</label>
+                <input type="text" name="install_dir" id="install_dir" {% if not
+                    server.is_running %}required{% endif %}
+                    value="{{ server.install_dir }}" {% if server.is_running
+                    %}disabled{% endif %}
+                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-xs font-mono text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-xs font-mono text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
             </div>
-            {% endif %}
-            {% if server.beta_branch %}
-            <div class="py-2{% if server.last_error %} border-b border-gray-100{% endif %}">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-beta-branch", lang="en-US") }}</dt>
-                <dd class="text-sm text-slate-900 m-0">{{ server.beta_branch }}</dd>
+            <!-- Server Mod -->
+            <div class="mb-4">
+                <label for="server_mod"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-mod", lang="en-US") }}</label>
+                <input type="text" name="server_mod" id="server_mod"
+                    value="{{ server.server_mod | default(value="") }}" {% if
+                    server.is_running %}disabled{% endif %}
+                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
             </div>
-            {% endif %}
+            <!-- Beta Branch -->
+            <div class="mb-4">
+                <label for="beta_branch"
+                    class="block text-sm font-medium text-slate-700 mb-1.5">{{
+                    t(key="servers-beta-branch", lang="en-US") }}</label>
+                <input type="text" name="beta_branch" id="beta_branch"
+                    value="{{ server.beta_branch | default(value="") }}" {% if
+                    server.is_running %}disabled{% endif %}
+                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
+            </div>
+            <!-- Login Mode -->
+            <div class="mb-5">
+                <label
+                    class="flex items-center gap-2 {% if server.is_running or not has_steam_creds %}cursor-not-allowed{% else %}cursor-pointer{% endif %}">
+                    <input type="checkbox" name="use_steam_login"
+                        id="use_steam_login" value="true" {% if
+                        server.use_steam_login %}checked{% endif %} {% if
+                        server.is_running or not has_steam_creds %}disabled{%
+                        endif %}
+                        class="w-4 h-4 accent-blue-600{% if server.is_running or not has_steam_creds %} opacity-50{% endif %}">
+                    <span class="text-sm font-medium text-slate-700">{{
+                        t(key="servers-form-use-steam-account", lang="en-US")
+                        }}</span>
+                </label>
+                {% if not has_steam_creds and server.use_steam_login %}
+                <input type="hidden" name="use_steam_login" value="true">
+                {% endif %}
+                {% if not has_steam_creds %}
+                <p class="mt-1.5 ml-6 mb-0 text-xs text-red-600">
+                    {{ t(key="servers-steam-creds-required", lang="en-US") }}
+                    <a href="/steam-config"
+                        class="text-red-600 underline hover:text-red-800 no-underline">{{
+                        t(key="servers-steam-creds-link", lang="en-US") }}</a>.
+                </p>
+                {% endif %}
+            </div>
             {% if server.last_error %}
-            <div class="p-2 bg-red-50 rounded mt-2">
-                <dt class="text-xs text-slate-400 mb-0.5">{{ t(key="servers-last-error", lang="en-US") }}</dt>
-                <dd class="text-sm text-red-600 m-0">{{ server.last_error }}</dd>
+            <div class="mb-4 p-2 bg-red-50 rounded">
+                <dt class="text-xs text-slate-400 mb-0.5">{{
+                    t(key="servers-last-error", lang="en-US") }}</dt>
+                <dd class="text-sm text-red-600 m-0">{{ server.last_error
+                    }}</dd>
             </div>
             {% endif %}
-        </dl>
+            <div>
+                <button type="submit" {% if server.is_running %}disabled{% endif
+                    %}
+                    class="px-5 py-2 text-sm font-medium text-white {% if server.is_running %}bg-slate-300 cursor-not-allowed{% else %}bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700{% endif %} rounded-lg">
+                    {{ t(key="servers-save-settings", lang="en-US") }}
+                </button>
+            </div>
+        </form>
     </div>
 
-    <!-- Actions -->
-    <div class="bg-white border border-gray-200 rounded-lg p-6">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{ t(key="servers-actions", lang="en-US") }}</h2>
-        <div class="flex flex-col gap-2">
-            {% if not server.is_running and server.status != "installing" %}
-            <form action="/servers/{{ server.id }}/start" method="post" class="m-0">
-                <button type="submit"
-                    class="w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-green-700">
-                    ▶&nbsp; {{ t(key="servers-start", lang="en-US") }}
-                </button>
-            </form>
-            {% endif %}
-            {% if server.is_running %}
-            <form action="/servers/{{ server.id }}/stop" method="post" class="m-0">
-                <button type="submit"
-                    class="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-red-700">
-                    ■&nbsp; {{ t(key="servers-stop", lang="en-US") }}
-                </button>
-            </form>
-            {% endif %}
-            {% if server.status == "installing" %}
-            <div class="flex items-center gap-2 px-2 py-2 text-sm text-blue-700">
-                <svg class="h-4 w-4 animate-spin flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-                Installation in progress…
+    <!-- Right column: Actions on top, Settings below -->
+    <div class="flex flex-col gap-5">
+        <!-- Actions -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h2
+                class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{
+                t(key="servers-actions", lang="en-US") }}</h2>
+            <div class="flex flex-col gap-2">
+                {% if not server.is_running and server.status != "installing" %}
+                <form action="/servers/{{ server.id }}/start" method="post"
+                    class="m-0">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-green-700">
+                        ▶&nbsp; {{ t(key="servers-start", lang="en-US") }}
+                    </button>
+                </form>
+                {% endif %}
+                {% if server.is_running %}
+                <form action="/servers/{{ server.id }}/stop" method="post"
+                    class="m-0">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-red-700">
+                        ■&nbsp; {{ t(key="servers-stop", lang="en-US") }}
+                    </button>
+                </form>
+                {% endif %}
+                {% if server.status == "installing" %}
+                <div
+                    class="flex items-center gap-2 px-2 py-2 text-sm text-blue-700">
+                    <svg class="h-4 w-4 animate-spin flex-shrink-0"
+                        xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                            stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Installation in progress…
+                </div>
+                {% endif %}
+                {% if not server.is_running and server.status != "installing" %}
+                <form action="/servers/{{ server.id }}/update" method="post"
+                    class="m-0">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-blue-700">
+                        ↻&nbsp; {{ t(key="servers-update", lang="en-US") }}
+                    </button>
+                </form>
+                {% endif %}
+                <form action="/servers/{{ server.id }}/delete" method="post"
+                    class="m-0"
+                    onsubmit="return confirm('{{ t(key="servers-delete-confirm",
+                    lang="en-US" ) }}')">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 text-sm font-medium text-slate-500 bg-slate-50 rounded-lg border border-gray-200 cursor-pointer text-left transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-300">
+                        {{ t(key="servers-delete", lang="en-US") }}
+                    </button>
+                </form>
             </div>
-            {% endif %}
-            {% if not server.is_running and server.status != "installing" %}
-            <form action="/servers/{{ server.id }}/update" method="post" class="m-0">
-                <button type="submit"
-                    class="w-full px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-blue-700">
-                    ↻&nbsp; {{ t(key="servers-update", lang="en-US") }}
-                </button>
+        </div>
+
+        <!-- Settings -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6 h-full">
+            <h2
+                class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
+                t(key="servers-settings", lang="en-US") }}</h2>
+            <p class="text-sm text-slate-500 m-0 mb-3">{{
+                t(key="servers-auto-start-help", lang="en-US") }}</p>
+            <form action="/servers/{{ server.id }}/auto-start" method="post"
+                class="flex items-center gap-3 mb-3" id="auto-start-form">
+                <input type="hidden" name="auto_start" id="auto-start-value"
+                    value="{% if server.auto_start %}true{% else %}false{% endif %}">
+                <label class="toggle">
+                    <input type="checkbox" id="auto-start-toggle" {% if
+                        server.auto_start %}checked{% endif %} {% if
+                        server.is_running %}disabled{% else
+                        %}onchange="handleAutoStart(event)" {% endif %}>
+                    <span class="toggle-track"></span>
+                    <span class="toggle-knob"></span>
+                </label>
+                <span class="text-sm font-medium text-slate-700">{{
+                    t(key="servers-auto-start", lang="en-US") }}</span>
             </form>
-            {% endif %}
-            <form action="/servers/{{ server.id }}/delete" method="post" class="m-0" onsubmit="return confirm('{{ t(key="servers-delete-confirm", lang="en-US") }}')">
-                <button type="submit"
-                    class="w-full px-4 py-2.5 text-sm font-medium text-slate-500 bg-slate-50 rounded-lg border border-gray-200 cursor-pointer text-left transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-300">
-                    {{ t(key="servers-delete", lang="en-US") }}
-                </button>
+            <p class="text-sm text-slate-500 m-0 mb-3">{{
+                t(key="servers-auto-restart-help", lang="en-US") }}</p>
+            <form action="/servers/{{ server.id }}/auto-restart" method="post"
+                class="flex items-center gap-3" id="auto-restart-form">
+                <input type="hidden" name="auto_restart" id="auto-restart-value"
+                    value="{% if server.auto_restart %}true{% else %}false{% endif %}">
+                <label class="toggle">
+                    <input type="checkbox" id="auto-restart-toggle" {% if
+                        server.auto_restart %}checked{% endif %} {% if
+                        server.is_running %}disabled{% else
+                        %}onchange="handleAutoRestart(event)" {% endif %}>
+                    <span class="toggle-track"></span>
+                    <span class="toggle-knob"></span>
+                </label>
+                <span class="text-sm font-medium text-slate-700">{{
+                    t(key="servers-auto-restart", lang="en-US") }}</span>
             </form>
         </div>
     </div>
-
-</div>
-
-<!-- Boot Script -->
-<!-- Settings -->
-<div class="bg-white border border-gray-200 rounded-lg p-6">
-    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{ t(key="servers-settings", lang="en-US") }}</h2>
-    <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="servers-auto-restart-help", lang="en-US") }}</p>
-    <form action="/servers/{{ server.id }}/auto-restart" method="post" class="flex items-center gap-3" id="auto-restart-form">
-        <input type="hidden" name="auto_restart" id="auto-restart-value" value="{% if server.auto_restart %}true{% else %}false{% endif %}">
-        <label class="toggle">
-            <input type="checkbox" id="auto-restart-toggle" {% if server.auto_restart %}checked{% endif %} onchange="handleAutoRestart(event)">
-            <span class="toggle-track"></span>
-            <span class="toggle-knob"></span>
-        </label>
-        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-auto-restart", lang="en-US") }}</span>
-    </form>
 </div>
 
 <div class="bg-white border border-gray-200 rounded-lg p-6">
-    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{ t(key="servers-boot-script", lang="en-US") }}</h2>
-    <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="servers-boot-script-help", lang="en-US") }}</p>
+    <h2
+        class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
+        t(key="servers-boot-script", lang="en-US") }}</h2>
+    <p class="text-sm text-slate-500 m-0 mb-3">{{
+        t(key="servers-boot-script-help", lang="en-US") }}</p>
     <form action="/servers/{{ server.id }}/boot-script" method="post">
-        <textarea name="boot_script" rows="5"
-            class="block w-full px-3 py-2.5 border border-gray-300 rounded-lg font-mono text-sm text-slate-900 bg-slate-50 resize-none outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:bg-white"
-            placeholder="# e.g. ./srcds_run -game csgo +map de_dust2"
-            >{{ server.boot_script|default(value="") }}</textarea>
+        <textarea name="boot_script" rows="5" {% if server.is_running
+            %}disabled{% endif %}
+            class="block w-full px-3 py-2.5 border {% if server.is_running %}border-gray-200 rounded-lg font-mono text-sm text-slate-500 bg-gray-50 cursor-not-allowed resize-none{% else %}border-gray-300 rounded-lg font-mono text-sm text-slate-900 bg-slate-50 resize-none outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:bg-white{% endif %}"
+            placeholder="# e.g. ./srcds_run -game csgo +map de_dust2">{{ server.boot_script|default(value="") }}</textarea>
         <div class="mt-2.5">
-            <button type="submit"
-                class="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700">
+            <button type="submit" {% if server.is_running %}disabled{% endif %}
+                class="px-5 py-2 text-sm font-medium text-white {% if server.is_running %}bg-slate-300 cursor-not-allowed{% else %}bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700{% endif %} rounded-lg">
                 {{ t(key="servers-save-boot-script", lang="en-US") }}
             </button>
         </div>
@@ -141,19 +264,26 @@
 <!-- Command Output -->
 {% if latest_run %}
 <div class="mt-5 bg-white border border-gray-200 rounded-lg p-6">
-    <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{ t(key="servers-command-output", lang="en-US") }}</h2>
-    <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="servers-command-output-help", lang="en-US") }}</p>
+    <h2
+        class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
+        t(key="servers-command-output", lang="en-US") }}</h2>
+    <p class="text-sm text-slate-500 m-0 mb-3">{{
+        t(key="servers-command-output-help", lang="en-US") }}</p>
 
     <!-- Status line: badge + run ID + exit code -->
     <div class="flex items-center gap-3 mb-3">
-        <span id="status-badge">{{ macros::status_badge(status=latest_run.status) }}</span>
-        <span class="text-sm text-slate-500">{{ t(key="servers-command-run-id", lang="en-US") }} {{ latest_run.id }}</span>
+        <span id="status-badge">{{
+            macros::status_badge(status=latest_run.status) }}</span>
+        <span class="text-sm text-slate-500">{{ t(key="servers-command-run-id",
+            lang="en-US") }} {{ latest_run.id }}</span>
         <span id="exit-code">
             {% set _exit = latest_run.exit_code|default(value=-1) %}
             {% if _exit == 0 %}
-            <span class="text-sm text-green-600">{{ t(key="exit-success", lang="en-US") }}</span>
+            <span class="text-sm text-green-600">{{ t(key="exit-success",
+                lang="en-US") }}</span>
             {% elif _exit != -1 %}
-            <span class="text-sm text-red-600">{{ t(key="exit-failed", lang="en-US") }} ({{ latest_run.exit_code }})</span>
+            <span class="text-sm text-red-600">{{ t(key="exit-failed",
+                lang="en-US") }} ({{ latest_run.exit_code }})</span>
             {% endif %}
         </span>
     </div>
@@ -162,10 +292,13 @@
     {% if latest_run.is_running %}
     <div id="live-indicator" class="flex items-center gap-2 mb-3">
         <span class="relative inline-block h-2 w-2">
-            <span class="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping"></span>
-            <span class="absolute inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            <span
+                class="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 animate-ping"></span>
+            <span
+                class="absolute inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
         </span>
-        <span class="text-sm font-medium text-blue-600">{{ t(key="commands-detail-live", lang="en-US") }}</span>
+        <span class="text-sm font-medium text-blue-600">{{
+            t(key="commands-detail-live", lang="en-US") }}</span>
     </div>
     {% else %}
     <div id="live-indicator" class="hidden"></div>
@@ -173,14 +306,17 @@
 
     <!-- Final status message (shown when run completes via JS) -->
     {% if latest_run.is_running %}
-    <p class="text-sm text-slate-500 italic m-0 mb-3 hidden" id="final-status"></p>
+    <p class="text-sm text-slate-500 italic m-0 mb-3 hidden"
+        id="final-status"></p>
     {% else %}
     <p class="text-sm text-slate-500 italic m-0 mb-3" id="final-status">
-        {{ t(key="commands-detail-completed-status", status=latest_run.status, lang="en-US") }}
+        {{ t(key="commands-detail-completed-status", status=latest_run.status,
+        lang="en-US") }}
     </p>
     {% endif %}
 
-    <pre id="log-output" class="overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300 max-h-[480px] whitespace-pre-wrap break-words">{{ run_log }}</pre>
+    <pre id="log-output"
+        class="overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300 max-h-[480px] whitespace-pre-wrap break-words">{{ run_log }}</pre>
 </div>
 {% endif %}
 {% endblock %}
@@ -192,6 +328,14 @@
 </script>
 {% endif %}
 <script>
+function handleAutoStart(event) {
+    var checkbox = document.getElementById('auto-start-toggle');
+    var hidden = document.getElementById('auto-start-value');
+    hidden.value = checkbox.checked ? 'true' : 'false';
+    var form = document.getElementById('auto-start-form');
+    if (form) form.requestSubmit();
+}
+
 function handleAutoRestart(event) {
     var checkbox = document.getElementById('auto-restart-toggle');
     var hidden = document.getElementById('auto-restart-value');
