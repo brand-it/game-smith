@@ -35,11 +35,7 @@ pub async fn show(
         .map(|s| (s.id, s.name.clone()))
         .collect();
 
-    // init() is idempotent — returns false if already initialized.
-    let initialized = shutdown_tracker::init(&server_list);
-    if !initialized {
-        tracing::warn!("shutdown tracker already initialized; skipping duplicate init");
-    }
+    shutdown_tracker::init(&server_list).await;
 
     let ctx_clone = ctx.clone();
     tokio::spawn(async move {
