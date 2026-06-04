@@ -22,7 +22,6 @@ fn gtk_initializes_before_tray() {
         port: 5150,
     };
     let manager = DesktopManager::new(config, "http://localhost:5150".to_string());
-
     // This should not panic with "GTK has not been initialized"
     // Run this test under xvfb-run to provide a virtual display
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

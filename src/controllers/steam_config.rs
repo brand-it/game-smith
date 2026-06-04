@@ -36,7 +36,7 @@ pub async fn show_config(
         .flatten()
         .map(|record| record.username);
 
-    crate::views::steam_config::config(&ctx, v, username.as_deref(), None)
+    crate::views::steam_config::config(&ctx, v, username.as_deref(), None, None)
 }
 
 /// POST /steam-config — save or update Steam credentials.
@@ -68,6 +68,7 @@ pub async fn save_config(
             v,
             existing_username.as_deref(),
             Some("Steam username cannot be empty"),
+            None,
         );
     }
     if password.is_empty() {
@@ -76,6 +77,7 @@ pub async fn save_config(
             v,
             existing_username.as_deref(),
             Some("Steam password cannot be empty"),
+            None,
         );
     }
 
@@ -97,7 +99,34 @@ pub async fn save_config(
         .await
         .map_err(|e| loco_rs::Error::string(&format!("failed to save steam credentials: {e}")))?;
 
-    crate::views::steam_config::config(&ctx, v, Some(&username), None)
+    crate::views::steam_config::config(&ctx, v, Some(&username), None, None)
+}
+
+/// POST /steam-config/clear — delete stored Steam credentials.
+///
+/// Removes the credential record from the database and re-renders the
+/// config page with a success message.
+///
+/// # Errors
+/// Returns a [`loco_rs::Error`] if the database operation fails.
+pub async fn clear_creds(
+    State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
+) -> Result<impl IntoResponse> {
+    let record = steam_credentials::Model::find(&ctx)
+        .await
+        .map_err(|e| loco_rs::Error::string(&format!("failed to query steam credentials: {e}")))?;
+
+    if let Some(cred) = record {
+        use sea_orm::Delete;
+
+        let active: steam_credentials::ActiveModel = cred.into();
+        Delete::one(active).exec(&ctx.db).await.map_err(|e| {
+            loco_rs::Error::string(&format!("failed to clear steam credentials: {e}"))
+        })?;
+    }
+
+    crate::views::steam_config::config(&ctx, v, None, None, Some("Steam credentials cleared"))
 }
 
 /// Register the steam config routes.
@@ -106,4 +135,5 @@ pub fn routes() -> Routes {
         .prefix("steam-config")
         .add("/", get(show_config))
         .add("/", post(save_config))
+        .add("/clear", post(clear_creds))
 }

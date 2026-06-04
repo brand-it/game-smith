@@ -127,6 +127,8 @@ impl Hooks for App {
             .add_route(controllers::game_servers::routes())
             .add_route(controllers::steam_config::routes())
             .add_route(controllers::autostart::routes())
+            .add_route(controllers::shutdown::routes())
+            .add_route(controllers::shutdown::ping_route())
             .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

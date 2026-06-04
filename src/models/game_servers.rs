@@ -1,5 +1,6 @@
 use super::_entities::game_servers::Column;
 pub use super::_entities::game_servers::{ActiveModel, Entity, Model};
+use crate::data::game_server_installer::GameServerError;
 use loco_rs::app::AppContext;
 use loco_rs::model::ModelError;
 use sea_orm::entity::prelude::*;
@@ -139,6 +140,29 @@ pub fn check_pid_alive(pid: i64) -> bool {
 #[cfg(target_os = "linux")]
 pub fn kill_pid(pid: i64, signal: libc::c_int) -> libc::c_int {
     unsafe { libc::kill(pid as libc::c_int, signal) }
+}
+
+/// Send a signal to an entire process group by PGID.
+///
+/// Passing a negative process ID to `kill(2)` targets the process group
+/// rather than a single process. The PGID is stored as a positive `i64`
+/// in the database (it's the child's PID after `setpgid(0, 0)`).
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
+pub fn kill_process_group(pgid: i64, signal: libc::c_int) -> libc::c_int {
+    // Negative PGID signals the entire group.
+    unsafe { libc::kill(-(pgid as libc::c_int), signal) }
+}
+
+/// Check if any process in a process group is still alive.
+///
+/// Signal-0 to a negative PGID succeeds if the group exists.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+#[cfg(target_os = "linux")]
+pub fn check_process_group_alive(pgid: i64) -> bool {
+    unsafe { libc::kill(-(pgid as libc::c_int), 0) == 0 }
 }
 
 /// Terminate a process by PID on Windows using `TerminateProcess`.
@@ -290,6 +314,44 @@ impl ActiveModel {
         self.auto_restart = ActiveValue::Set(auto_restart);
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
+
+    /// Update the auto-start setting for a game server.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_auto_start(
+        &mut self,
+        ctx: &AppContext,
+        auto_start: bool,
+    ) -> Result<Model, ModelError> {
+        self.auto_start = ActiveValue::Set(auto_start);
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
+
+    /// Update multiple server settings in a single database call.
+    ///
+    /// Updates `name`, `install_dir`, `server_mod`, `beta_branch`,
+    /// and `use_steam_login` atomically. Platform is managed by internal
+    /// systems and cannot be changed by the user.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_settings(
+        &mut self,
+        ctx: &AppContext,
+        name: String,
+        install_dir: String,
+        server_mod: Option<String>,
+        beta_branch: Option<String>,
+        use_steam_login: bool,
+    ) -> Result<Model, ModelError> {
+        self.name = ActiveValue::Set(name);
+        self.install_dir = ActiveValue::Set(install_dir);
+        self.server_mod = ActiveValue::Set(server_mod);
+        self.beta_branch = ActiveValue::Set(beta_branch);
+        self.use_steam_login = ActiveValue::Set(use_steam_login);
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
 }
 
 /// Read-oriented helpers on persisted records.
@@ -326,6 +388,18 @@ impl Model {
         query.all(&ctx.db).await.map_err(ModelError::from)
     }
 
+    /// Find game servers with auto-start enabled.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database query fails.
+    pub async fn find_auto_start(ctx: &AppContext) -> Result<Vec<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::AutoStart.eq(true))
+            .all(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
     /// Returns the Steam App ID as an unsigned value.
     #[must_use]
     pub fn app_id_u32(&self) -> u32 {
@@ -354,6 +428,37 @@ impl Model {
     #[must_use]
     pub fn is_error(&self) -> bool {
         self.status() == ServerStatus::Error
+    }
+
+    /// Start this game server using its boot script or default executable.
+    ///
+    /// Delegates to [`GameServerInstaller::start`] and updates the server's
+    /// status to [`ServerStatus::Running`] when a process is launched.
+    ///
+    /// # Errors
+    /// Returns a [`GameServerError`] if the start command fails.
+    pub async fn start(&self, ctx: &AppContext) -> std::result::Result<bool, GameServerError> {
+        let installer = crate::data::game_server_installer::GameServerInstaller::new(ctx);
+        let started = installer.start(self).await?.is_some();
+        if started {
+            if let Ok(Some(active_server)) = Self::find_by_id(ctx, self.id).await {
+                let mut active: ActiveModel = active_server.into();
+                let _ = active.update_status(ctx, ServerStatus::Running, None).await;
+            }
+        }
+        Ok(started)
+    }
+
+    /// Stop this game server gracefully by terminating its running process(es).
+    ///
+    /// Sends SIGTERM to all running command runs associated with this server
+    /// and updates the database status to [`ServerStatus::Stopped`].
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database update fails.
+    pub async fn stop(&self, ctx: &AppContext) -> std::result::Result<(), ModelError> {
+        use crate::data::game_server_installer::GameServerInstaller;
+        GameServerInstaller::new(ctx).stop(self).await
     }
 }
 

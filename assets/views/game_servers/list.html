@@ -21,8 +21,8 @@
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-app-id", lang="en-US") }}</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-platform", lang="en-US") }}</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-status", lang="en-US") }}</th>
+                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-auto-start", lang="en-US") }}</th>
                 <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-login-mode", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="servers-table-install-dir", lang="en-US") }}</th>
         </thead>
         <tbody>
             {% for server in servers %}
@@ -33,8 +33,8 @@
                 <td class="px-4 py-3 font-mono text-slate-600">{{ server.app_id }}</td>
                 <td class="px-4 py-3 text-slate-600">{{ server.platform }}</td>
                 <td class="px-4 py-3">{{ macros::status_badge(status=server.status) }}</td>
+                <td class="px-4 py-3">{% if server.auto_start %}<span class="text-green-600 text-sm font-medium">On</span>{% else %}<span class="text-slate-400 text-sm font-medium">Off</span>{% endif %}</td>
                 <td class="px-4 py-3 text-slate-600">{% if server.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</td>
-                <td class="px-4 py-3 font-mono text-xs text-slate-500 max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="{{ server.install_dir }}">{{ server.install_dir }}</td>
             </tr>
             {% endfor %}
         </tbody>

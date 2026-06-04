@@ -88,7 +88,6 @@ impl DesktopManager {
     pub const fn new(config: DesktopConfig, server_url: String) -> Self {
         Self { config, server_url }
     }
-
     /// Spawns the tray icon on a dedicated thread.
     ///
     /// The tray icon runs its own event loop on a background thread.
@@ -103,7 +102,6 @@ impl DesktopManager {
 
         let tooltip = self.config.tray.tooltip.clone();
         let server_url = self.server_url.clone();
-
         let (tx, rx) = std::sync::mpsc::sync_channel::<Option<String>>(0);
 
         std::thread::spawn(move || {

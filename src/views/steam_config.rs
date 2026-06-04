@@ -17,6 +17,7 @@ pub fn config(
     v: impl ViewRenderer,
     username: Option<&str>,
     error: Option<&str>,
+    success: Option<&str>,
 ) -> Result<impl IntoResponse> {
     format::render().view(
         &v,
@@ -24,6 +25,7 @@ pub fn config(
         data!({
             "username": username.unwrap_or(""),
             "error": error,
+            "success": success,
         }),
     )
 }

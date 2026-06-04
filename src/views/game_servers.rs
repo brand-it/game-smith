@@ -78,6 +78,9 @@ pub async fn show(
     let is_running = crate::models::game_servers::is_alive(ctx, server).await;
     let view = GameServerView::new_with_running(server, is_running);
 
+    let has_steam_creds = crate::models::steam_credentials::Model::is_configured(ctx)
+        .await
+        .unwrap_or(false);
     // Query latest command run for this server
     let latest_run_model =
         crate::models::command_runs::Model::find_latest_by_server(ctx, i64::from(server.id))
@@ -105,6 +108,7 @@ pub async fn show(
             "server": view,
             "latest_run": latest_run,
             "run_log": run_log,
+            "has_steam_creds": has_steam_creds,
         }),
     )
 }

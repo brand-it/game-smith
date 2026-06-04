@@ -27,7 +27,8 @@ const MENU_QUIT: &str = "quit";
 
 /// Tray icon state and configuration.
 ///
-/// Owns the tooltip text and server URL needed for menu event handling.
+/// Owns the tooltip text and server URL needed
+/// for menu event handling.
 pub struct Tray {
     server_url: String,
 }
@@ -38,7 +39,6 @@ impl Tray {
     pub const fn new(server_url: String) -> Self {
         Self { server_url }
     }
-
     /// Creates a procedural 32x32 icon (white circle on dark background).
     #[must_use]
     pub fn icon() -> Icon {
@@ -110,14 +110,15 @@ impl Tray {
 ///
 /// Used inside event-loop closures where `self` has been moved.
 fn dispatch_menu(event: &MenuEvent, server_url: &str, tray: &TrayIcon) {
-    use std::process;
-
     match event.id.as_ref() {
         MENU_OPEN => {
             let _ = open::that(server_url);
         }
         MENU_QUIT => {
-            process::exit(0);
+            // Open the /shutdown URL directly — the controller handles
+            // stopping game servers and exiting the process.
+            let shutdown_url = format!("{server_url}/shutdown");
+            let _ = open::that(&shutdown_url);
         }
         MENU_AUTOSTART => {
             let was_enabled = super::autostart::is_enabled().unwrap_or(false);
