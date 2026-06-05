@@ -276,6 +276,25 @@ impl ActiveModel {
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
 
+    /// Update the server status to [`ServerStatus::Stopped`] without clearing
+    /// any existing `last_error`.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_stop(&mut self, ctx: &AppContext) -> Result<Model, ModelError> {
+        self.status = ActiveValue::Set(ServerStatus::Stopped.as_str().to_string());
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
+
+    /// Update the server status to [`ServerStatus::Running`].
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn update_running(&mut self, ctx: &AppContext) -> Result<Model, ModelError> {
+        self.status = ActiveValue::Set(ServerStatus::Running.as_str().to_string());
+        self.clone().update(&ctx.db).await.map_err(ModelError::from)
+    }
+
     /// Update the PID of a running game server.
     ///
     /// # Errors
@@ -441,23 +460,35 @@ impl Model {
         let installer = crate::data::game_server_installer::GameServerInstaller::new(ctx);
         let started = installer.start(self).await?.is_some();
         if started {
-            if let Ok(Some(active_server)) = Self::find_by_id(ctx, self.id).await {
-                let mut active: ActiveModel = active_server.into();
-                let _ = active.update_status(ctx, ServerStatus::Running, None).await;
-            }
+            let mut active: ActiveModel = self.clone().into();
+            crate::log_result(
+                active.update_running(ctx).await,
+                "updated server status to Running",
+                "failed to update server status to Running",
+            );
         }
         Ok(started)
     }
 
     /// Stop this game server gracefully by terminating its running process(es).
     ///
-    /// Sends SIGTERM to all running command runs associated with this server
-    /// and updates the database status to [`ServerStatus::Stopped`].
+    /// Updates the server status to [`ServerStatus::Stopped`] first to prevent
+    /// the worker's auto-restart logic from kicking in, then sends SIGTERM to
+    /// all running command runs associated with this server.
     ///
     /// # Errors
     /// Returns a [`ModelError`] if the database update fails.
     pub async fn stop(&self, ctx: &AppContext) -> std::result::Result<(), ModelError> {
         use crate::data::game_server_installer::GameServerInstaller;
+
+        // Update status to Stopped BEFORE sending SIGTERM so the worker's
+        // auto-restart logic sees the server is no longer Running.
+        let mut active: ActiveModel = self.clone().into();
+        crate::log_result(
+            active.update_stop(ctx).await,
+            "updated server status to Stopped",
+            "failed to update server status to Stopped",
+        );
         GameServerInstaller::new(ctx).stop(self).await
     }
 }
