@@ -463,9 +463,12 @@ impl GameServerInstaller {
 
     /// Stop a running game server by terminating its command run processes.
     ///
-    /// Queries running [`command_runs`] records for this server, sends
-    /// SIGTERM to each process with a PID, marks the runs as failed,
-    /// and updates the server status to Stopped.
+    /// Queries running [`command_runs`] records for this server and sends
+    /// SIGTERM to each process with a PID.
+    ///
+    /// The caller is responsible for updating the server status to
+    /// [`ServerStatus::Stopped`] before calling this method to prevent the
+    /// worker's auto-restart logic from kicking in.
     ///
     /// # Arguments
     /// * `server` - The game server model record.

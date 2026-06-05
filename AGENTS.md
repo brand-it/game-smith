@@ -166,6 +166,15 @@ Skip the todo list only for trivial requests: single-line fixes, reading files, 
 - Use `loco_rs::Result` / `ModelError` throughout.
 - Controllers return `Result<Response>`; use `unauthorized()`, `bad_request()` helpers.
 - `?` operator for propagation; never `unwrap()` in production code.
+- Never silence errors with `let _ =`. Always propagate with `?`, or use `crate::log_result()` to log at `INFO`/`ERROR` level when no action is taken. Lost information is a bug waiting to happen.
+  ```rust
+ crate::log_result(
+     active.update_stop(ctx).await,
+     "updated server status to Stopped",
+     "failed to update server status to Stopped",
+ )
+ .await;
+  ```
 
 ### Async
 - All DB operations and handlers are `async`. Use `#[debug_handler]` on controller functions.

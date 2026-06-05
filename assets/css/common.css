@@ -28,3 +28,23 @@
 .toggle input:focus-visible ~ .toggle-track {
   @apply ring-4 ring-blue-100;
 }
+/* Sidebar shutdown link */
+.sidebar-shutdown {
+  @apply border-t border-slate-700 py-2;
+}
+
+.sidebar-shutdown a {
+  @apply flex items-center gap-2.5 rounded px-3 py-2 text-sm font-medium text-red-400 no-underline transition-colors duration-100;
+}
+
+.sidebar-shutdown a:hover {
+  @apply bg-red-950/30 text-red-300;
+}
+
+.sidebar-shutdown a svg {
+  @apply h-4 w-4 flex-shrink-0 opacity-70;
+}
+
+.sidebar-shutdown a:hover svg {
+  @apply opacity-100;
+}

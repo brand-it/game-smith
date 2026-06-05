@@ -152,9 +152,13 @@ pub async fn create(
     // Update server status to installing
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, server.id).await {
         let mut active: game_servers::ActiveModel = active_server.into();
-        let _ = active
-            .update_status(&ctx, ServerStatus::Installing, None)
-            .await;
+        crate::log_result(
+            active
+                .update_status(&ctx, ServerStatus::Installing, None)
+                .await,
+            "updated server status to Installing",
+            "failed to update server status to Installing",
+        );
     }
 
     // Redirect to command detail page
@@ -259,9 +263,13 @@ pub async fn update_server(
     // Update server status
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {
         let mut active: game_servers::ActiveModel = active_server.into();
-        let _ = active
-            .update_status(&ctx, ServerStatus::Installing, None)
-            .await;
+        crate::log_result(
+            active
+                .update_status(&ctx, ServerStatus::Installing, None)
+                .await,
+            "updated server status to Installing",
+            "failed to update server status to Installing",
+        );
     }
 
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())

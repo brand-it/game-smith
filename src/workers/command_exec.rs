@@ -190,7 +190,9 @@ impl CommandExecWorker {
     /// Returns true if this server should auto-restart after process exit.
     ///
     /// Checks that the run is associated with a game server (not an install/
-    /// update command) and that the server's `auto_restart` flag is set.
+    /// update command), that the server's `auto_restart` flag is set, and that
+    /// the server's current status is [`ServerStatus::Running`]. A user-initiated
+    /// stop sets the status to [`ServerStatus::Stopped`], which prevents restart.
     async fn should_auto_restart(&self, run_id: i32) -> bool {
         let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await else {
             return false;
@@ -214,7 +216,7 @@ impl CommandExecWorker {
             return false;
         };
 
-        server.auto_restart
+        server.auto_restart && server.status() == ServerStatus::Running
     }
 
     /// Append an auto-restart marker line to the run's log file.

@@ -5,6 +5,7 @@ nav-steamcmd = SteamCMD
 nav-commands = Commands
 nav-steam-config = Steam Credentials
 nav-autostart = Autostart
+nav-shutdown = Shutdown
 
 hello-world = Hello World!
 greeting = Hello { $name }!

@@ -167,7 +167,7 @@ async fn run_job(
 ) {
     // Run immediately on start if configured.
     if run_on_start {
-        let _ = execute_task(&job_name, &*task, &ctx, output).await;
+        execute_task(&job_name, &*task, &ctx, output).await;
     }
 
     // Parse schedule and enter the interval loop.
@@ -190,29 +190,21 @@ async fn run_job(
 
     loop {
         ticker.tick().await;
-        let _ = execute_task(&job_name, &*task, &ctx, output).await;
+        execute_task(&job_name, &*task, &ctx, output).await;
     }
 }
 
 /// Execute a task and handle output / error logging.
-async fn execute_task(
-    job_name: &str,
-    task: &dyn LocoTask,
-    ctx: &AppContext,
-    output: OutputMode,
-) -> loco_rs::Result<()> {
+async fn execute_task(job_name: &str, task: &dyn LocoTask, ctx: &AppContext, output: OutputMode) {
     let vars = Vars::default();
-
     match task.run(ctx, &vars).await {
         Ok(()) => {
             if matches!(output, OutputMode::Stdout) {
                 tracing::info!(job = %job_name, "task completed");
             }
-            Ok(())
         }
         Err(e) => {
             tracing::error!(job = %job_name, error = %e, "task failed");
-            Err(e)
         }
     }
 }
