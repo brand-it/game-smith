@@ -185,7 +185,7 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
 /// stored in the database.
 #[allow(clippy::unused_async)]
 pub async fn is_alive(_ctx: &AppContext, server: &Model) -> bool {
-    server.is_running() && server.pid.is_some_and(check_pid_alive)
+    server.pid.is_some_and(check_pid_alive)
 }
 
 #[async_trait::async_trait]
