@@ -202,6 +202,11 @@ Skip the todo list only for trivial requests: single-line fixes, reading files, 
 
 - Naming conventions: use descriptive variable names (e.g., `tray_state`, not `t`; `tray_icon`, not `tr`). There is no cost in describing things clearly.
 
+### Server Liveness Model
+- **`is_running`** (DB `status` column): represents **user intent** — what the user wants the server to be doing. A server can be marked "Running" while its process is dead (a zombie).
+- **`is_alive`** (OS-level PID check via `game_servers::is_alive()`): represents **ground truth** — whether the actual OS process exists. A server can be alive even if marked "Stopped" in the DB.
+- During shutdown, always use `is_alive()` to determine what needs stopping. The DB status is never authoritative for process state.
+
 ### Local Environment
 - Linux requires GTK/appindicator system dependencies (`libgtk-3`, `libappindicator-gtk3`).
 - No libxdo symlink needed — `tray-icon` is compiled with `libxdo` feature disabled.

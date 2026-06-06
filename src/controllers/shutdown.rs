@@ -2,8 +2,10 @@
 //!
 //! Renders a shutdown status page with per-server progress. A JSON API at
 //! `/shutdown/status` returns the current state of all servers being stopped.
+//!
+//! Ground truth for server liveness comes from `is_alive()` (OS PID check),
+//! not from any synthetic tracking state.
 
-use crate::data::shutdown_tracker;
 use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::extract::State;
 use axum::routing::get;
@@ -11,13 +13,75 @@ use axum::Json;
 use loco_rs::app::AppContext;
 use loco_rs::controller::views::ViewEngine;
 use loco_rs::prelude::*;
+use serde::Serialize;
+
+/// Per-server shutdown status.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerShutdownStatus {
+    /// Termination signal sent; waiting for process to exit.
+    Stopping,
+    /// Server process confirmed stopped.
+    Stopped,
+    /// Failed to stop (includes error reason).
+    Failed(String),
+}
+
+/// A single server's shutdown status record.
+#[derive(Clone, Debug, Serialize)]
+pub struct ShutdownServer {
+    pub id: i32,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub status: ServerShutdownStatus,
+}
+
+/// Top-level shutdown state exposed via the status API.
+#[derive(Clone, Debug, Serialize)]
+pub struct ShutdownStatus {
+    /// Whether a shutdown sequence is currently in progress.
+    pub shutting_down: bool,
+    /// Per-server status.
+    pub servers: Vec<ShutdownServer>,
+}
+
+/// Build a [`ShutdownStatus`] from live PID checks across all servers.
+async fn build_status(ctx: &AppContext) -> ShutdownStatus {
+    let all_servers = crate::models::game_servers::Model::list(ctx)
+        .await
+        .unwrap_or_default();
+
+    let mut servers = Vec::with_capacity(all_servers.len());
+    for s in &all_servers {
+        let alive = crate::models::game_servers::is_alive(ctx, s).await;
+        let status = if alive {
+            ServerShutdownStatus::Stopping
+        } else {
+            ServerShutdownStatus::Stopped
+        };
+        servers.push(ShutdownServer {
+            id: s.id,
+            name: s.name.clone(),
+            error: None,
+            status,
+        });
+    }
+
+    let shutting_down = servers
+        .iter()
+        .any(|s| matches!(s.status, ServerShutdownStatus::Stopping));
+
+    ShutdownStatus {
+        shutting_down,
+        servers,
+    }
+}
 
 /// GET /shutdown — render the shutdown page and begin graceful exit.
 ///
-/// Captures the list of running servers, seeds the shutdown tracker,
-/// then stops each server one at a time in a background task while
-/// updating the tracker. The rendered page polls the status API for
-/// live progress.
+/// Spawns a background task that stops every alive server, then polls
+/// `is_alive()` until all processes are dead before exiting the HTTP server.
 ///
 /// # Errors
 /// Returns an error if rendering fails.
@@ -25,53 +89,40 @@ pub async fn show(
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
-    // Find running servers and initialize the tracker.
-    let running_servers = crate::models::game_servers::Model::find_running(&ctx)
+    let all_servers = crate::models::game_servers::Model::list(&ctx)
         .await
         .unwrap_or_default();
 
-    let server_list: Vec<(i32, String)> = running_servers
-        .iter()
-        .map(|s| (s.id, s.name.clone()))
-        .collect();
-
-    shutdown_tracker::init(&server_list).await;
-
     let ctx_clone = ctx.clone();
     tokio::spawn(async move {
-        for server in &running_servers {
-            shutdown_tracker::set_stopping(server.id).await;
-            tracing::info!(
-                server_id = server.id,
-                server_name = %server.name,
-                "stopping server during shutdown"
-            );
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await; // Brief delay to allow the initial page response to be sent before we start killing processes. makes thing look fancy
 
-            match server.stop(&ctx_clone).await {
-                Ok(()) => {
-                    shutdown_tracker::set_stopped(server.id).await;
-                    tracing::info!(
-                        server_id = server.id,
-                        server_name = %server.name,
-                        "stopped server during shutdown"
-                    );
-                }
-                Err(e) => {
-                    shutdown_tracker::set_failed(server.id, e.to_string()).await;
-                    tracing::error!(
-                        server_id = server.id,
-                        server_name = %server.name,
-                        err = %e,
-                        "failed to stop server during shutdown"
-                    );
-                }
+        // Send SIGTERM to every alive server.
+        for server in &all_servers {
+            let alive = crate::models::game_servers::is_alive(&ctx_clone, server).await;
+            if !alive {
+                continue;
             }
+            tracing::info!(server_id = server.id, "stopping server during shutdown");
+            let _ = server.stop(&ctx_clone).await;
         }
 
-        shutdown_tracker::mark_complete().await;
+        // Wait until all processes are actually dead (max 30s).
+        for _ in 0..60 {
+            let mut still_alive = false;
+            for s in &all_servers {
+                if crate::models::game_servers::is_alive(&ctx_clone, s).await {
+                    still_alive = true;
+                    break;
+                }
+            }
+            if !still_alive {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
 
-        // Allow time for the browser to receive the final status update
-        // before the process exits.
+        // Allow time for the browser to receive the final status update.
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         tracing::info!("shutdown complete");
         std::process::exit(0);
@@ -82,13 +133,12 @@ pub async fn show(
 
 /// GET /shutdown/status — JSON API returning current shutdown progress.
 ///
-/// Returns a JSON body with the overall shutdown state and per-server
-/// status. The shutdown page polls this endpoint every 500ms.
+/// Queries all servers from the DB and computes live status via `is_alive()`.
 ///
 /// # Errors
 /// Returns an error if serialization fails.
-pub async fn status_api() -> Result<impl IntoResponse> {
-    let status = shutdown_tracker::status().await;
+pub async fn status_api(State(ctx): State<AppContext>) -> Result<impl IntoResponse> {
+    let status = build_status(&ctx).await;
     Ok(Json(status))
 }
 
@@ -96,9 +146,21 @@ pub async fn status_api() -> Result<impl IntoResponse> {
 ///
 /// During an active shutdown sequence, returns JSON with shutdown status
 /// instead of a minimal OK object.
-pub async fn ping() -> impl IntoResponse {
-    let status = shutdown_tracker::status().await;
-    let body: serde_json::Value = if status.shutting_down {
+pub async fn ping(State(ctx): State<AppContext>) -> impl IntoResponse {
+    let all_servers = crate::models::game_servers::Model::list(&ctx)
+        .await
+        .unwrap_or_default();
+
+    let mut shutting_down = false;
+    for s in &all_servers {
+        if crate::models::game_servers::is_alive(&ctx, s).await {
+            shutting_down = true;
+            break;
+        }
+    }
+
+    let body: serde_json::Value = if shutting_down {
+        let status = build_status(&ctx).await;
         serde_json::to_value(&status)
             .unwrap_or_else(|_| serde_json::json!({ "status": "shutting_down" }))
     } else {

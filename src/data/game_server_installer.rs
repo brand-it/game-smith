@@ -476,14 +476,14 @@ impl GameServerInstaller {
     /// # Errors
     /// Returns a [`ModelError`] if the database update fails.
     pub async fn stop(&self, server: &game_servers::Model) -> Result<(), ModelError> {
-        let running_runs = crate::models::command_runs::Model::find_running_by_server(
-            &self.ctx,
-            i64::from(server.id),
-        )
-        .await?;
-
-        for run in running_runs {
+        let runs =
+            crate::models::command_runs::Model::find_by_server(&self.ctx, i64::from(server.id))
+                .await?;
+        for run in runs {
             if let Some(pid) = run.pid {
+                if !crate::models::game_servers::check_pid_alive(pid) {
+                    continue;
+                }
                 // Fire SIGTERM at the entire process group and return immediately.
                 // We don't wait for the process to exit — on next boot the PID
                 // liveness task will reconcile DB state with ground truth.

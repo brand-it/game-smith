@@ -41,7 +41,7 @@
                 updateOverall(true);
                 schedulePoll();
             } else {
-                markComplete();
+                verifyServerDead();
             }
         } catch (e) {
             consecutiveFailures++;
@@ -133,6 +133,20 @@
         if (shuttingDown && overallText) {
             overallText.textContent = "Stopping game servers\u2026";
         }
+    }
+
+    function verifyServerDead() {
+        // API reports shutdown is done — confirm the server process
+        // has actually died by checking that /ping stops responding.
+        fetch("/ping")
+            .then(function () {
+                // Server still responding — wait and try again.
+                setTimeout(verifyServerDead, 500);
+            })
+            .catch(function () {
+                // Server no longer responds — safe to mark complete.
+                markComplete();
+            });
     }
 
     function markComplete() {

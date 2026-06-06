@@ -1,8 +1,11 @@
 use game_smith::app::App;
+use game_smith::models::command_runs::ActiveModel as CommandRunActiveModel;
 use game_smith::models::game_servers::{
     is_alive, ActiveModel, Model as GameServerModel, ServerStatus,
 };
+use loco_rs::model::ModelError;
 use loco_rs::testing::prelude::*;
+use sea_orm::ActiveModelTrait;
 use serial_test::serial;
 
 macro_rules! configure_insta {
@@ -289,8 +292,189 @@ async fn test_find_running_returns_zombie_servers() {
     // is_alive checks the actual process — with no real PID set,
     // it returns false even though DB status is Running.
     assert!(!is_alive(&boot.app_context, &found[0]).await);
+
+    // find_alive must exclude zombies (DB "Running" but no alive process)
+    let alive = GameServerModel::find_alive(&boot.app_context)
+        .await
+        .expect("Failed to find alive servers");
+    assert!(alive.is_empty(), "find_alive should exclude zombie servers");
 }
 
+/// `find_alive` includes servers with a live PID and excludes zombies.
+///
+/// PID 1 (init/systemd) is guaranteed to be alive on Linux. A stale
+/// PID that doesn't exist on the system must be filtered out.
+#[tokio::test]
+#[serial]
+#[cfg(target_os = "linux")]
+async fn test_find_alive_excludes_zombies() {
+    // Helper: insert a command_run for a given server_id and pid.
+    async fn insert_run(ctx: &loco_rs::app::AppContext, server_id: i32, pid: i64) {
+        use sea_orm::ActiveValue;
+        let run = CommandRunActiveModel {
+            id: ActiveValue::NotSet,
+            created_at: ActiveValue::Set(chrono::Utc::now().into()),
+            updated_at: ActiveValue::Set(chrono::Utc::now().into()),
+            command: ActiveValue::Set("test".to_string()),
+            args: ActiveValue::Set(serde_json::json!([])),
+            working_dir: ActiveValue::NotSet,
+            log_path: ActiveValue::NotSet,
+            env: ActiveValue::NotSet,
+            status: ActiveValue::Set("running".to_string()),
+            exit_code: ActiveValue::NotSet,
+            started_at: ActiveValue::Set(chrono::Utc::now().naive_utc()),
+            completed_at: ActiveValue::NotSet,
+            server_id: ActiveValue::Set(Some(i64::from(server_id))),
+            log_removed: ActiveValue::Set(false),
+            pid: ActiveValue::Set(Some(pid)),
+            title: ActiveValue::NotSet,
+        };
+        run.insert(&ctx.db).await.unwrap();
+    }
+
+    configure_insta!();
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create a zombie server: "Running" status with a command run having
+    // a PID that almost certainly doesn't exist.
+    let zombie = ActiveModel::create(
+        &boot.app_context,
+        730,
+        "Zombie Alive Test".to_string(),
+        "/tmp/game-smith/games/zombie-alive".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create zombie");
+    let mut zombie_active: ActiveModel = zombie.clone().into();
+    zombie_active.status = sea_orm::ActiveValue::Set(ServerStatus::Running.as_str().to_string());
+    zombie_active
+        .clone()
+        .update(&boot.app_context.db)
+        .await
+        .map_err(ModelError::from)
+        .expect("Failed to update zombie");
+    insert_run(&boot.app_context, zombie.id, 99999).await;
+
+    // Create an "alive" server: "Running" status with a command run having
+    // the PID of this process (always alive).
+    let own_pid = std::process::id() as i64;
+    let alive_server = ActiveModel::create(
+        &boot.app_context,
+        740,
+        "Alive Test".to_string(),
+        "/tmp/game-smith/games/alive".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create alive server");
+    let mut alive_active: ActiveModel = alive_server.clone().into();
+    alive_active.status = sea_orm::ActiveValue::Set(ServerStatus::Running.as_str().to_string());
+    alive_active
+        .clone()
+        .update(&boot.app_context.db)
+        .await
+        .map_err(ModelError::from)
+        .expect("Failed to update alive server");
+    insert_run(&boot.app_context, alive_server.id, own_pid).await;
+
+    // find_running returns both (DB status is "Running" for both)
+    let running = GameServerModel::find_running(&boot.app_context)
+        .await
+        .expect("Failed to find running servers");
+    assert_eq!(running.len(), 2);
+
+    // find_alive queries ALL servers regardless of DB status —
+    // but only the server with a live PID in its command runs is included.
+    let alive = GameServerModel::find_alive(&boot.app_context)
+        .await
+        .expect("Failed to find alive servers");
+    assert_eq!(alive.len(), 1);
+    assert_eq!(alive[0].id, alive_server.id);
+}
+
+/// A server marked "Stopped" in the DB but with a live PID in its command
+/// runs should still be included by `find_alive`. During shutdown, DB status
+/// is intent, not ground truth — the process is the source of truth.
+#[tokio::test]
+#[serial]
+#[cfg(target_os = "linux")]
+async fn test_find_alive_includes_stopped_but_alive() {
+    // Helper: insert a command_run for a given server_id and pid.
+    async fn insert_run(ctx: &loco_rs::app::AppContext, server_id: i32, pid: i64) {
+        use sea_orm::ActiveValue;
+        let run = CommandRunActiveModel {
+            id: ActiveValue::NotSet,
+            created_at: ActiveValue::Set(chrono::Utc::now().into()),
+            updated_at: ActiveValue::Set(chrono::Utc::now().into()),
+            command: ActiveValue::Set("test".to_string()),
+            args: ActiveValue::Set(serde_json::json!([])),
+            working_dir: ActiveValue::NotSet,
+            log_path: ActiveValue::NotSet,
+            env: ActiveValue::NotSet,
+            status: ActiveValue::Set("running".to_string()),
+            exit_code: ActiveValue::NotSet,
+            started_at: ActiveValue::Set(chrono::Utc::now().naive_utc()),
+            completed_at: ActiveValue::NotSet,
+            server_id: ActiveValue::Set(Some(i64::from(server_id))),
+            log_removed: ActiveValue::Set(false),
+            pid: ActiveValue::Set(Some(pid)),
+            title: ActiveValue::NotSet,
+        };
+        run.insert(&ctx.db).await.unwrap();
+    }
+
+    configure_insta!();
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create a server with status "Stopped" but a command run with a live PID.
+    let own_pid = std::process::id() as i64;
+    let server = ActiveModel::create(
+        &boot.app_context,
+        750,
+        "Stopped But Alive".to_string(),
+        "/tmp/game-smith/games/stopped-alive".to_string(),
+        "linux".to_string(),
+        None,
+        None,
+        false,
+    )
+    .await
+    .expect("Failed to create server");
+    let mut active: ActiveModel = server.clone().into();
+    active.status = sea_orm::ActiveValue::Set(ServerStatus::Stopped.as_str().to_string());
+    active
+        .clone()
+        .update(&boot.app_context.db)
+        .await
+        .map_err(ModelError::from)
+        .expect("Failed to update server");
+    insert_run(&boot.app_context, server.id, own_pid).await;
+
+    // find_running should NOT return it (DB status is Stopped)
+    let running = GameServerModel::find_running(&boot.app_context)
+        .await
+        .expect("Failed to find running servers");
+    assert!(
+        !running.iter().any(|s| s.id == server.id),
+        "find_running should exclude stopped server"
+    );
+
+    // find_alive MUST include it (process is actually alive)
+    let alive = GameServerModel::find_alive(&boot.app_context)
+        .await
+        .expect("Failed to find alive servers");
+    assert!(
+        alive.iter().any(|s| s.id == server.id),
+        "find_alive should include a stopped-but-alive server"
+    );
+}
 /// update() must not return a WriteScript error when install_dir does not exist.
 ///
 /// Regression test: `GameServerInstaller::update()` called `fs::write(install_dir/update_NNN.txt)`
