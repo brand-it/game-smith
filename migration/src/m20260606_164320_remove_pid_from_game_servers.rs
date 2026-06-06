@@ -1,5 +1,5 @@
-use sea_orm_migration::prelude::*;
 use sea_orm::Statement;
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
         // SQLite has no IF EXISTS for DROP COLUMN — check manually.
         let exists = Statement::from_string(
             m.get_database_backend(),
-            r#"SELECT COUNT(*) FROM pragma_table_info('game_servers') WHERE name = 'pid'"#
+            r"SELECT COUNT(*) FROM pragma_table_info('game_servers') WHERE name = 'pid'"
                 .to_string(),
         );
         let row = m.get_connection().query_one(exists).await?;
