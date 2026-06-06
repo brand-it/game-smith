@@ -6,6 +6,8 @@ on:
 
 env:
   RUST_TOOLCHAIN: "1.95.0"
+  CARGO_INCREMENTAL: "0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build:
@@ -18,7 +20,7 @@ jobs:
             install-cmd: "sudo apt-get update && sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb"
             test-cmd: xvfb-run cargo test --all-features --all
             artifact-name: game-smith-ubuntu
-          - os: windows-latest
+          - os: windows-2025-vs2026
             install-cmd: ""
             test-cmd: cargo test --all-features --all
             artifact-name: game-smith-windows
@@ -33,7 +35,24 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: swatinem/rust-cache@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ matrix.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ matrix.os }}-cargo-target-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-cargo-target-${{ github.job }}-
 
       - name: Install system dependencies
         if: matrix.install-cmd != ''
@@ -51,5 +70,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: target/release/game-smith${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          path: target/release/game-smith${{ matrix.os == 'windows-2025-vs2026' && '.exe' || '' }}
           retention-days: 7
