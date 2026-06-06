@@ -14,10 +14,6 @@ use portable_pty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
-#[cfg(target_os = "windows")]
-use std::io::Read;
-#[cfg(target_os = "windows")]
-use std::io::Write;
 #[cfg(target_os = "linux")]
 use std::os::fd::FromRawFd;
 use tokio::io::AsyncRead;
@@ -477,11 +473,11 @@ impl CommandExecWorker {
         // Obtain a reader and a writer for the PTY master.
         // Reader: receives the child's output.
         // Writer: sends input to the child (used to reply to VT queries).
-        let mut reader = pair
+        let reader = pair
             .master
             .try_clone_reader()
             .map_err(|e| loco_rs::Error::string(&format!("failed to clone pty reader: {e}")))?;
-        let mut writer = pair
+        let writer = pair
             .master
             .take_writer()
             .map_err(|e| loco_rs::Error::string(&format!("failed to take pty writer: {e}")))?;

@@ -17,10 +17,13 @@ pub fn check_pid_alive(pid: i64) -> bool {
 /// Returns `true` if the process is still running.
 #[must_use]
 fn check_pid_alive_impl(pid: i64) -> bool {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, STILL_ACTIVE,
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+
+    // STILL_ACTIVE (0x103) — not re-exported by the windows crate.
+    const STILL_ACTIVE: u32 = 259;
 
     let handle = match unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid as u32) }
     {
@@ -72,5 +75,84 @@ mod tests {
     #[test]
     fn kill_pid_returns_false_for_nonexistent_process() {
         assert!(!kill_pid(999999, 0));
+    }
+
+    #[test]
+    fn check_pid_alive_returns_true_for_current_process() {
+        let pid = std::process::id() as i64;
+        assert!(check_pid_alive(pid), "current process should be alive");
+    }
+
+    #[test]
+    fn check_pid_alive_returns_false_for_nonexistent() {
+        assert!(
+            !check_pid_alive(999999),
+            "nonexistent process should not be alive"
+        );
+    }
+
+    #[test]
+    fn check_pid_alive_returns_false_for_pid_zero() {
+        // PID 0 on Windows refers to the current process but OpenProcess
+        // with PID 0 returns ERROR_INVALID_PARAMETER.
+        assert!(!check_pid_alive(0), "PID 0 should not be reported alive");
+    }
+
+    #[test]
+    fn kill_pid_returns_false_for_pid_zero() {
+        assert!(
+            !kill_pid(0, 0),
+            "cannot terminate PID 0 (system idle process)"
+        );
+    }
+
+    #[test]
+    fn check_pid_alive_lifecycle() {
+        // Spawn a long-running process using cmd.exe
+        let mut child = std::process::Command::new("cmd")
+            .args(["/c", "timeout", "/t", "60"])
+            .spawn()
+            .expect("spawn cmd timeout");
+        let pid = child.id() as i64;
+
+        // Give the process time to start
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Verify alive
+        assert!(check_pid_alive(pid), "child process should be alive");
+
+        // Kill it
+        assert!(kill_pid(pid, 0), "kill_pid should succeed");
+
+        // Reap the child
+        let _ = child.wait();
+
+        // Verify dead
+        assert!(
+            !check_pid_alive(pid),
+            "child process should be dead after termination"
+        );
+    }
+
+    #[test]
+    fn kill_pid_on_already_dead_process() {
+        // Spawn and immediately let the process exit
+        let child = std::process::Command::new("cmd")
+            .args(["/c", "exit"])
+            .spawn()
+            .expect("spawn cmd exit");
+        let pid = child.id() as i64;
+
+        // Wait for it to finish
+        let _ = child.wait();
+
+        // Verify it's dead
+        assert!(!check_pid_alive(pid), "exited process should not be alive");
+
+        // kill_pid on a dead process should return false (can't open handle)
+        assert!(
+            !kill_pid(pid, 0),
+            "kill_pid on dead process should return false"
+        );
     }
 }
