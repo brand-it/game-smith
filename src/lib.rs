@@ -126,3 +126,20 @@ pub fn install_panic_hook() {
         );
     }));
 }
+
+/// Log the outcome of a `Result` at `INFO` / `ERROR` level.
+///
+/// Use this instead of `let _ = …` to avoid silently swallowing errors.
+/// The caller supplies a human-readable message for each branch; the
+/// error's `Display` output is attached as the `err` field.
+#[inline]
+pub fn log_result<T, E: std::fmt::Display>(
+    result: Result<T, E>,
+    success_msg: &str,
+    error_msg: &str,
+) {
+    match result {
+        Ok(_) => tracing::info!(success_msg),
+        Err(e) => tracing::error!(err = %e, error_msg),
+    }
+}

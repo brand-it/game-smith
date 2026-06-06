@@ -5,9 +5,7 @@ use loco_rs::model::ModelError;
 use tracing::{info, warn};
 
 use crate::data::command_runner::CommandRunner;
-use crate::models::command_runs::CommandStatus;
 use crate::models::game_servers;
-use crate::models::game_servers::ServerStatus;
 
 /// Errors that can occur during game server installation.
 #[derive(Debug)]
@@ -465,9 +463,12 @@ impl GameServerInstaller {
 
     /// Stop a running game server by terminating its command run processes.
     ///
-    /// Queries running [`command_runs`] records for this server, sends
-    /// SIGTERM to each process with a PID, marks the runs as failed,
-    /// and updates the server status to Stopped.
+    /// Queries running [`command_runs`] records for this server and sends
+    /// SIGTERM to each process with a PID.
+    ///
+    /// The caller is responsible for updating the server status to
+    /// [`ServerStatus::Stopped`] before calling this method to prevent the
+    /// worker's auto-restart logic from kicking in.
     ///
     /// # Arguments
     /// * `server` - The game server model record.
@@ -475,36 +476,52 @@ impl GameServerInstaller {
     /// # Errors
     /// Returns a [`ModelError`] if the database update fails.
     pub async fn stop(&self, server: &game_servers::Model) -> Result<(), ModelError> {
-        let running_runs = crate::models::command_runs::Model::find_running_by_server(
-            &self.ctx,
-            i64::from(server.id),
-        )
-        .await?;
-
-        for run in running_runs {
+        let runs =
+            crate::models::command_runs::Model::find_by_server(&self.ctx, i64::from(server.id))
+                .await?;
+        for run in runs {
             if let Some(pid) = run.pid {
-                let _ = crate::models::game_servers::kill_pid(
-                    pid,
-                    crate::models::game_servers::TERM_SIGNAL,
-                );
-                info!(
-                    server_id = server.id,
-                    run_id = run.id,
-                    pid = pid,
-                    "Sent SIGTERM to command run process"
-                );
-            }
+                if !crate::models::game_servers::check_pid_alive(pid) {
+                    continue;
+                }
+                // Fire SIGTERM at the entire process group and return immediately.
+                // We don't wait for the process to exit — on next boot the PID
+                // liveness task will reconcile DB state with ground truth.
+                #[cfg(target_os = "linux")]
+                {
+                    let ret = game_servers::kill_process_group(pid, game_servers::TERM_SIGNAL);
+                    if ret == 0 {
+                        info!(
+                            server_id = server.id,
+                            run_id = run.id,
+                            pgid = pid,
+                            "Sent SIGTERM to process group"
+                        );
+                    } else {
+                        warn!(
+                            server_id = server.id,
+                            run_id = run.id,
+                            pgid = pid,
+                            error = ?std::io::Error::last_os_error(),
+                            "Failed to signal process group; falling back to single PID"
+                        );
+                        let _ = game_servers::kill_pid(pid, game_servers::TERM_SIGNAL);
+                    }
+                }
 
-            let mut active: crate::models::command_runs::ActiveModel = run.into();
-            let _ = active
-                .finish(&self.ctx, Some(143), CommandStatus::Failed)
-                .await;
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = game_servers::kill_pid(pid, game_servers::TERM_SIGNAL);
+                    info!(
+                        server_id = server.id,
+                        run_id = run.id,
+                        pid = pid,
+                        "Sent termination signal to process"
+                    );
+                }
+            }
         }
 
-        let mut active: game_servers::ActiveModel = server.clone().into();
-        active
-            .update_status(&self.ctx, ServerStatus::Stopped, None)
-            .await?;
         Ok(())
     }
 

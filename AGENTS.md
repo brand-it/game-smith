@@ -166,6 +166,15 @@ Skip the todo list only for trivial requests: single-line fixes, reading files, 
 - Use `loco_rs::Result` / `ModelError` throughout.
 - Controllers return `Result<Response>`; use `unauthorized()`, `bad_request()` helpers.
 - `?` operator for propagation; never `unwrap()` in production code.
+- Never silence errors with `let _ =`. Always propagate with `?`, or use `crate::log_result()` to log at `INFO`/`ERROR` level when no action is taken. Lost information is a bug waiting to happen.
+  ```rust
+ crate::log_result(
+     active.update_stop(ctx).await,
+     "updated server status to Stopped",
+     "failed to update server status to Stopped",
+ )
+ .await;
+  ```
 
 ### Async
 - All DB operations and handlers are `async`. Use `#[debug_handler]` on controller functions.
@@ -192,6 +201,11 @@ Skip the todo list only for trivial requests: single-line fixes, reading files, 
 - Use `&str` over `&String` in function signatures (clippy `ptr_arg`).
 
 - Naming conventions: use descriptive variable names (e.g., `tray_state`, not `t`; `tray_icon`, not `tr`). There is no cost in describing things clearly.
+
+### Server Liveness Model
+- **`is_running`** (DB `status` column): represents **user intent** — what the user wants the server to be doing. A server can be marked "Running" while its process is dead (a zombie).
+- **`is_alive`** (OS-level PID check via `game_servers::is_alive()`): represents **ground truth** — whether the actual OS process exists. A server can be alive even if marked "Stopped" in the DB.
+- During shutdown, always use `is_alive()` to determine what needs stopping. The DB status is never authoritative for process state.
 
 ### Local Environment
 - Linux requires GTK/appindicator system dependencies (`libgtk-3`, `libappindicator-gtk3`).

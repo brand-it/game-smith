@@ -19,7 +19,7 @@ static_loader! {
     };
 }
 
-const VIEWS_DIR: Dir<'_> = include_dir!("assets/views");
+pub const VIEWS_DIR: Dir<'_> = include_dir!("assets/views");
 
 /// Build a `tera::Tera` instance from embedded views.
 ///

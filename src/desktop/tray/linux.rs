@@ -14,9 +14,12 @@ use super::dispatch_menu;
 /// then blocks on `gtk::main()`.
 pub fn run_event_loop(server_url: String, tray: TrayIcon) -> ! {
     let rx_menu = MenuEvent::receiver().clone();
-    glib::idle_add(move || {
+    let tray_ref = tray.clone();
+    // Use `idle_add_local` instead of `idle_add` to avoid the `Send` bound
+    // (TrayIcon is !Send due to GTK thread affinity).
+    glib::idle_add_local(move || {
         while let Ok(event) = rx_menu.try_recv() {
-            dispatch_menu(&event, &server_url);
+            dispatch_menu(&event, &server_url, &tray_ref);
         }
         glib::ControlFlow::Continue
     });

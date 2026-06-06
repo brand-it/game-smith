@@ -26,9 +26,9 @@ pub struct GameServerView<'a> {
 
 impl<'a> GameServerView<'a> {
     #[must_use]
-    pub fn new_with_running(server: &'a GameServerModel, is_running: bool) -> Self {
+    pub fn new(server: &'a GameServerModel) -> Self {
         Self {
-            is_running,
+            is_running: server.is_running(),
             is_installed: server.is_installed(),
             is_error: server.is_error(),
             inner: server,
@@ -40,15 +40,15 @@ impl<'a> GameServerView<'a> {
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
+#[allow(clippy::unused_async)]
 pub async fn list(
-    ctx: &AppContext,
+    _ctx: &AppContext,
     v: impl ViewRenderer,
     servers: &[GameServerModel],
 ) -> Result<impl IntoResponse> {
     let mut views = Vec::with_capacity(servers.len());
     for server in servers {
-        let is_running = crate::models::game_servers::is_alive(ctx, server).await;
-        views.push(GameServerView::new_with_running(server, is_running));
+        views.push(GameServerView::new(server));
     }
     format::render().view(&v, "game_servers/list.html", data!({ "servers": views }))
 }
@@ -75,9 +75,11 @@ pub async fn show(
     v: impl ViewRenderer,
     server: &GameServerModel,
 ) -> Result<impl IntoResponse> {
-    let is_running = crate::models::game_servers::is_alive(ctx, server).await;
-    let view = GameServerView::new_with_running(server, is_running);
+    let view = GameServerView::new(server);
 
+    let has_steam_creds = crate::models::steam_credentials::Model::is_configured(ctx)
+        .await
+        .unwrap_or(false);
     // Query latest command run for this server
     let latest_run_model =
         crate::models::command_runs::Model::find_latest_by_server(ctx, i64::from(server.id))
@@ -105,6 +107,7 @@ pub async fn show(
             "server": view,
             "latest_run": latest_run,
             "run_log": run_log,
+            "has_steam_creds": has_steam_creds,
         }),
     )
 }

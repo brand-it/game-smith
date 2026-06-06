@@ -8,6 +8,7 @@ use loco_rs::boot::{create_app, start, ServeParams, StartMode};
 use loco_rs::cli;
 use loco_rs::Result;
 use migration::Migrator;
+use tracing::{error, info};
 
 /// Determine whether the current invocation should boot the server.
 /// Defaults to `start` when no subcommand is given.
@@ -15,8 +16,50 @@ fn should_start_server() -> bool {
     matches!(std::env::args().nth(1).as_deref(), Some("start") | None)
 }
 
+/// Handle autostart subcommands early (before server or CLI bootstrap).
+fn handle_autostart_subcommand() -> bool {
+    match std::env::args().nth(1).as_deref() {
+        Some("autostart-enable") => {
+            if let Err(e) = game_smith::desktop::autostart::enable() {
+                error!("game-smith: failed to enable autostart: {e}");
+                return true;
+            }
+            info!("game-smith: autostart enabled");
+            true
+        }
+        Some("autostart-disable") => {
+            if let Err(e) = game_smith::desktop::autostart::disable() {
+                error!("game-smith: failed to disable autostart: {e}");
+                return true;
+            }
+            info!("game-smith: autostart disabled");
+            true
+        }
+        Some("autostart-is-enabled") => {
+            let enabled = match game_smith::desktop::autostart::is_enabled() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("game-smith: failed to check autostart status: {e}");
+                    return true;
+                }
+            };
+            info!(
+                "game-smith: autostart is {}",
+                if enabled { "enabled" } else { "disabled" }
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 fn main() -> Result<()> {
     game_smith::install_panic_hook();
+
+    // Handle autostart subcommands before any server or CLI bootstrap.
+    if handle_autostart_subcommand() {
+        return Ok(());
+    }
 
     // Resolve app data directories once; reuse for dirs and boot log.
     let dirs = AppDirs::new(resolve_data_home());
@@ -63,7 +106,6 @@ fn run_server() -> Result<()> {
         eprintln!("game-smith: desktop disabled");
         None
     };
-
     // Start the tokio runtime only after GTK/tray setup is complete.
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -83,6 +125,7 @@ fn run_cli() -> Result<()> {
 
 /// Boot the app with the server, workers, and scheduler all running in-process.
 /// The scheduler config is embedded in code via `App::load_config`.
+#[allow(clippy::too_many_lines)]
 async fn boot_server() -> Result<()> {
     use loco_rs::boot::create_context;
 
@@ -102,6 +145,38 @@ async fn boot_server() -> Result<()> {
         create_app::<App, Migrator>(StartMode::ServerAndWorker, &environment, app_context.config)
             .await?;
 
+    // Auto-start servers that have auto_start = true.
+    let ctx_for_autostart = boot.app_context.clone();
+    tokio::spawn(async move {
+        match game_smith::models::game_servers::Model::find_auto_start(&ctx_for_autostart).await {
+            Ok(servers) => {
+                if servers.is_empty() {
+                    return;
+                }
+                let mut started = 0;
+                let total = servers.len();
+                for server in &servers {
+                    match server.start(&ctx_for_autostart).await {
+                        Ok(true) => {
+                            started += 1;
+                            tracing::info!(server_id = server.id, server_name = %server.name, "auto-started server");
+                        }
+                        Ok(false) => {
+                            tracing::info!(server_id = server.id, server_name = %server.name, "auto-start skipped (already running or no executable)");
+                        }
+                        Err(e) => {
+                            tracing::error!(server_id = server.id, server_name = %server.name, err = %e, "auto-start failed");
+                        }
+                    }
+                }
+                tracing::info!(started, total, "auto-start complete");
+            }
+            Err(e) => {
+                tracing::error!(err = %e, "failed to query auto-start servers");
+            }
+        }
+    });
+
     // Spawn custom in-process scheduler.
     let ctx_for_scheduler = boot.app_context.clone();
     tokio::spawn(async move {
@@ -114,8 +189,33 @@ async fn boot_server() -> Result<()> {
         port: boot.app_context.config.server.port,
         binding: boot.app_context.config.server.binding.clone(),
     };
+    let shutdown_ctx = boot.app_context.clone();
 
-    start::<App>(boot, serve_params, false).await
+    let result = start::<App>(boot, serve_params, false).await;
+
+    // Graceful shutdown: stop running game servers and show status page.
+    let running_servers = game_smith::models::game_servers::Model::find_running(&shutdown_ctx)
+        .await
+        .unwrap_or_default();
+
+    for server in &running_servers {
+        if let Err(e) = server.stop(&shutdown_ctx).await {
+            tracing::error!(
+                server_id = server.id,
+                server_name = %server.name,
+                err = %e,
+                "failed to stop server during shutdown"
+            );
+        } else {
+            tracing::info!(
+                server_id = server.id,
+                server_name = %server.name,
+                "stopped server during shutdown"
+            );
+        }
+    }
+    tracing::info!("shutdown complete");
+    result
 }
 
 /// Write a one-line boot record to a plain text file before anything else

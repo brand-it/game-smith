@@ -126,6 +126,9 @@ impl Hooks for App {
             .add_route(controllers::steamcmd::routes())
             .add_route(controllers::game_servers::routes())
             .add_route(controllers::steam_config::routes())
+            .add_route(controllers::autostart::routes())
+            .add_route(controllers::shutdown::routes())
+            .add_route(controllers::shutdown::ping_route())
             .add_route(Routes::new().add("/", get(controllers::commands::list)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
@@ -176,11 +179,16 @@ pub async fn clean_stale_migrations(uri: &str) {
 
     for record in applied {
         if !available.iter().any(|s| s == &record.version) {
-            let _ = sea_orm::Delete::many(seaql_migrations::Entity)
-                .filter(seaql_migrations::Column::Version.eq(&record.version))
+            let version = &record.version;
+            let res = sea_orm::Delete::many(seaql_migrations::Entity)
+                .filter(seaql_migrations::Column::Version.eq(version))
                 .exec(&db)
                 .await;
-            tracing::info!(migration = %record.version, "removed stale migration record");
+            crate::log_result(
+                res,
+                "removed stale migration record",
+                "failed to remove stale migration record",
+            );
         }
     }
 }

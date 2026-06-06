@@ -127,6 +127,7 @@
             <!-- System folders for shortcuts -->
             <Directory Id='ProgramMenuFolder'/>
             <Directory Id='DesktopFolder'/>
+            <Directory Id='StartupFolder'/>
         </Directory>
 
         <!-- Start Menu shortcut (WixStandardDir fragment provides ProgramMenuFolder) -->
@@ -172,6 +173,26 @@
             </Component>
         </DirectoryRef>
 
+        <!-- Startup Folder shortcut for autostart (optional feature) -->
+        <DirectoryRef Id='StartupFolder'>
+            <Component Id='StartupShortcut' Guid='*'>
+                <Shortcut
+                    Id='StartupShortcut'
+                    Name='Game Smith'
+                    Description='Launch Game Smith server on login'
+                    Target='[Bin]game-smith.exe'
+                    Arguments='start'
+                    WorkingDirectory='Bin'
+                    Icon='ProductICO'/>
+                <RegistryValue
+                    Root='HKCU'
+                    Key='Software\brand-it\Game Smith\StartupShortcut'
+                    Name='installed'
+                    Type='integer'
+                    Value='1'
+                    KeyPath='yes'/>
+            </Component>
+        </DirectoryRef>
         <Feature
             Id='Binaries'
             Title='Application'
@@ -195,6 +216,15 @@
                 Level='1'
                 Absent='allow'>
                 <ComponentRef Id='Path'/>
+            </Feature>
+
+            <Feature
+                Id='Autostart'
+                Title='Start on Login'
+                Description='Automatically start the Game Smith server when you log in.'
+                Level='1'
+                Absent='allow'>
+                <ComponentRef Id='StartupShortcut'/>
             </Feature>
         </Feature>
 

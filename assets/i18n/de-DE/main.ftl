@@ -98,3 +98,9 @@ status-pending = Ausstehend
 status-installing = Wird installiert
 status-installed = Installiert
 status-error = Fehler
+
+servers-name = Servername
+servers-edit-settings = Server-Einstellungen
+servers-save-settings = Einstellungen speichern
+servers-steam-creds-required = Steam-Anmeldedaten sind nicht konfiguriert. 
+servers-steam-creds-link = Steam-Anmeldedaten einrichten

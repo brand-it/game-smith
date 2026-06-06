@@ -41,9 +41,17 @@ impl Initializer for SteamCmdInstaller {
             let steamcmd = SteamCmd::new(&dirs);
 
             // Create log file for the health check
+            crate::log_result(
+                std::fs::create_dir_all(steamcmd.steamcmd_dir()),
+                "created SteamCMD directory for health check",
+                "failed to create SteamCMD directory for health check",
+            );
             let log_path = steamcmd.steamcmd_dir().join("health_check.log");
-            let _ = std::fs::create_dir_all(steamcmd.steamcmd_dir());
-            let _ = std::fs::File::create(&log_path);
+            crate::log_result(
+                std::fs::File::create(&log_path),
+                "created SteamCMD health check log file",
+                "failed to create SteamCMD health check log file",
+            );
             let log_path_str = Some(log_path.to_string_lossy().to_string());
 
             // Create a CommandRun with the steamcmd binary as the command

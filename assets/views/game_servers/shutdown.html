@@ -1,0 +1,43 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}Shutting Down{% endblock %}
+
+{% block content %}
+<div class="shutdown-page">
+    <div class="mb-6 flex items-center gap-4">
+        <div class="shutdown-icon" id="shutdown-icon"></div>
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 m-0">Shutting Down</h1>
+            <p class="text-sm text-slate-500 mt-0.5">Stopping running game servers and cleaning up</p>
+        </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="mb-4">
+        <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <!-- Overall status -->
+    <div class="overall-bar" id="overall-bar">
+        <div class="overall-label" id="overall-label">
+            <span class="dots"><span></span><span></span><span></span></span>
+            <span id="overall-text">Waiting for status&hellip;</span>
+        </div>
+        <div class="server-tally" id="server-tally"></div>
+    </div>
+
+    <!-- Server cards -->
+    <div id="server-list" class="space-y-2">
+        <div class="loading-placeholder placeholder">
+            <div class="shutdown-icon loading-icon"></div>
+            Fetching server list&hellip;
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/shutdown.js"></script>
+{% endblock %}

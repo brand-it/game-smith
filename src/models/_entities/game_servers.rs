@@ -15,7 +15,6 @@ pub struct Model {
     pub install_dir: String,
     pub platform: String,
     pub status: String,
-    pub pid: Option<i64>,
     #[sea_orm(column_type = "Text", nullable)]
     pub boot_script: Option<String>,
     pub auto_start: bool,

@@ -4,6 +4,8 @@ nav-servers = Game Servers
 nav-steamcmd = SteamCMD
 nav-commands = Commands
 nav-steam-config = Steam Credentials
+nav-autostart = Autostart
+nav-shutdown = Shutdown
 
 hello-world = Hello World!
 greeting = Hello { $name }!
@@ -62,6 +64,7 @@ servers-table-status = Status
 servers-table-install-dir = Install Dir
 servers-detail-title = Game Server
 servers-info = Server Info
+servers-name = Server Name
 servers-app-id = App ID
 servers-platform = Platform
 servers-install-dir = Install Directory
@@ -110,6 +113,17 @@ status-installed = Installed
 status-error = Error
 
 # Server settings
+servers-edit-settings = Server Settings
+servers-save-settings = Save Settings
 servers-settings = Settings
 servers-auto-restart = Auto-Restart
 servers-auto-restart-help = Automatically restart the server if it crashes.
+
+# Server auto-start
+servers-auto-start = Auto-Start
+servers-auto-start-help = Automatically start the server when Game Smith boots.
+servers-table-auto-start = Auto-Start
+
+servers-steam-creds-required = Steam credentials are not configured. 
+servers-steam-creds-link = Set up Steam Credentials
+servers-running-locked = Settings are locked while the server is running.
