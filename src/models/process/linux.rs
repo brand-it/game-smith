@@ -74,7 +74,7 @@ mod tests {
         assert!(check_pid_alive(pid));
 
         // Kill it
-        kill_pid(pid, libc::SIGKILL);
+        let _ = kill_pid(pid, libc::SIGKILL);
 
         // Reap the zombie so the PID is fully cleaned up.
         let _ = child.wait();

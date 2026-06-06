@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn kill_pid_on_already_dead_process() {
         // Spawn and immediately let the process exit
-        let child = std::process::Command::new("cmd")
+        let mut child = std::process::Command::new("cmd")
             .args(["/c", "exit"])
             .spawn()
             .expect("spawn cmd exit");
