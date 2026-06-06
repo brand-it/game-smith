@@ -40,8 +40,9 @@ impl<'a> GameServerView<'a> {
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
+#[allow(clippy::unused_async)]
 pub async fn list(
-    ctx: &AppContext,
+    _ctx: &AppContext,
     v: impl ViewRenderer,
     servers: &[GameServerModel],
 ) -> Result<impl IntoResponse> {

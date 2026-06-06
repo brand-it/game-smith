@@ -240,6 +240,18 @@ impl Model {
             .map_err(ModelError::from)
     }
 
+    /// Find all command runs for a specific server (regardless of status).
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database query fails.
+    pub async fn find_by_server(ctx: &AppContext, server_id: i64) -> Result<Vec<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::ServerId.eq(server_id))
+            .all(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
     /// Find the most recent command run for a specific server.
     ///
     /// # Errors

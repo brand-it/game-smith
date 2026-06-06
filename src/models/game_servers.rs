@@ -85,6 +85,35 @@ pub fn slugify(name: &str) -> String {
         .join("-")
 }
 
+/// Strip control characters from a boot script.
+///
+/// Keeps printable text, LF (`\n`), and TAB (`\t`). Strips everything
+/// else in the C0 control range (0x00–0x08, 0x0B–0x0C, 0x0D–0x1F) and
+/// DEL (0x7F). This prevents CRLF line endings, null bytes, and other
+/// invisible characters from poisoning shell execution.
+#[must_use]
+pub fn sanitize_boot_script(script: &str) -> String {
+    script.chars().filter(|c| is_script_safe_char(*c)).collect()
+}
+
+/// Returns `true` if the character is safe for shell script content.
+///
+/// Safe = printable, LF, or TAB. Everything else in C0 + DEL is rejected.
+const fn is_script_safe_char(c: char) -> bool {
+    let cp = c as u32;
+    // C0 control characters: 0x00–0x1F
+    if cp <= 0x1F {
+        // Allow LF (0x0A) and TAB (0x09)
+        return c == '\n' || c == '\t';
+    }
+    // DEL is 0x7F
+    if cp == 0x7F {
+        return false;
+    }
+    // Everything else (printable ASCII + Unicode) is fine.
+    true
+}
+
 /// Compute the default install directory for a game server.
 ///
 /// - Linux: `~/game-smith/games/{slug}/`
@@ -177,15 +206,17 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
     unsafe { TerminateProcess(handle, 1).is_ok() }
 }
 
-/// Check whether this server process is actually alive on the system.
+/// Check whether this server has any alive processes on the system.
 ///
-/// Returns `true` only when the DB status is `Running` **and** the recorded
-/// PID responds to a signal check. This is the ground-truth observation of
-/// the OS state — distinct from `is_running()`, which reflects user intent
-/// stored in the database.
-#[allow(clippy::unused_async)]
-pub async fn is_alive(_ctx: &AppContext, server: &Model) -> bool {
-    server.pid.is_some_and(check_pid_alive)
+/// Queries `command_runs` for runs associated with this server and
+/// checks if any recorded PID is still alive. This is ground truth —
+/// distinct from `is_running()`, which reflects user intent.
+pub async fn is_alive(ctx: &AppContext, server: &Model) -> bool {
+    let runs = crate::models::command_runs::Model::find_by_server(ctx, i64::from(server.id))
+        .await
+        .unwrap_or_default();
+
+    runs.iter().any(|r| r.pid.is_some_and(check_pid_alive))
 }
 
 #[async_trait::async_trait]
@@ -243,7 +274,6 @@ impl ActiveModel {
             install_dir: ActiveValue::Set(install_dir),
             platform: ActiveValue::Set(platform),
             status: ActiveValue::Set(ServerStatus::Pending.as_str().to_string()),
-            pid: ActiveValue::NotSet,
             boot_script: ActiveValue::Set(None),
             auto_start: ActiveValue::Set(false),
             auto_restart: ActiveValue::Set(false),
@@ -294,19 +324,6 @@ impl ActiveModel {
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
 
-    /// Update the PID of a running game server.
-    ///
-    /// # Errors
-    /// Returns a [`ModelError`] if the database operation fails.
-    pub async fn update_pid(
-        &mut self,
-        ctx: &AppContext,
-        pid: Option<i64>,
-    ) -> Result<Model, ModelError> {
-        self.pid = ActiveValue::Set(pid);
-        self.clone().update(&ctx.db).await.map_err(ModelError::from)
-    }
-
     /// Update the boot script for a game server.
     ///
     /// # Errors
@@ -316,7 +333,11 @@ impl ActiveModel {
         ctx: &AppContext,
         boot_script: Option<String>,
     ) -> Result<Model, ModelError> {
-        self.boot_script = ActiveValue::Set(boot_script);
+        // Sanitize: shell scripts must not contain control characters that
+        // poison execution. Keep printable text, LF, and TAB; strip everything
+        // else in the C0 control range (including CR from Windows editors).
+        let script = boot_script.as_ref().map(|s| sanitize_boot_script(s));
+        self.boot_script = ActiveValue::Set(script);
         self.clone().update(&ctx.db).await.map_err(ModelError::from)
     }
 
@@ -404,6 +425,25 @@ impl Model {
     pub async fn find_running(ctx: &AppContext) -> Result<Vec<Self>, ModelError> {
         let query = Entity::find().filter(Column::Status.eq(ServerStatus::Running.as_str()));
         query.all(&ctx.db).await.map_err(ModelError::from)
+    }
+
+    /// Find game servers that have a living process on the system.
+    ///
+    /// This is the ground-truth check for shutdown: DB status is *intent*,
+    /// not actual state. A server with stale DB status but a live process
+    /// (or vice versa) is resolved by checking the PID.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn find_alive(ctx: &AppContext) -> Result<Vec<Self>, ModelError> {
+        let candidates = Self::list(ctx).await?;
+        let mut alive = Vec::new();
+        for s in candidates {
+            if is_alive(ctx, &s).await {
+                alive.push(s);
+            }
+        }
+        Ok(alive)
     }
 
     /// Find game servers with auto-start enabled.
@@ -518,6 +558,56 @@ mod tests {
     #[test]
     fn check_pid_alive_returns_false_for_nonexistent() {
         assert!(!check_pid_alive(999999));
+    }
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_removes_cr() {
+        let out = sanitize_boot_script("echo hello\r\necho world\r\n");
+        assert_eq!(out, "echo hello\necho world\n");
+    }
+
+    #[test]
+    fn sanitize_keeps_lf_and_tab() {
+        let out = sanitize_boot_script("line1\n\tindented\n");
+        assert_eq!(out, "line1\n\tindented\n");
+    }
+
+    #[test]
+    fn sanitize_strips_null_bytes() {
+        let out = sanitize_boot_script("hello\x00world");
+        assert_eq!(out, "helloworld");
+    }
+
+    #[test]
+    fn sanitize_strips_del() {
+        let out = sanitize_boot_script("hello\x7Fworld");
+        assert_eq!(out, "helloworld");
+    }
+
+    #[test]
+    fn sanitize_strips_all_c0_controls() {
+        // Feed every C0 character (0x00–0x1F) into the sanitizer.
+        let input: String = (0u8..=0x1F).map(|b| b as char).collect();
+        let out = sanitize_boot_script(&input);
+        // Only \t (0x09) and \n (0x0A) should survive.
+        assert_eq!(out, "\t\n");
+    }
+
+    #[test]
+    fn sanitize_keeps_printable_ascii() {
+        let input: String = (0x20u8..=0x7Eu8).map(|b| b as char).collect();
+        assert_eq!(sanitize_boot_script(&input), input);
+    }
+
+    #[test]
+    fn sanitize_keeps_unicode() {
+        let out = sanitize_boot_script("café ☕ 你好");
+        assert_eq!(out, "café ☕ 你好");
     }
 }
 
