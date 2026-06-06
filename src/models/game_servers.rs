@@ -177,16 +177,15 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
     unsafe { TerminateProcess(handle, 1).is_ok() }
 }
 
-/// Check whether this server process is actually alive.
+/// Check whether this server process is actually alive on the system.
 ///
-/// The DB `status` column is authoritative — it represents user intent
-/// (start/stop). The PID provides ground-truth observation, but during
-/// restarts there may be a brief window where the PID is dead but the
-/// worker is about to spawn a new process. Trusting the status column
-/// avoids flickering the stop button.
+/// Returns `true` only when the DB status is `Running` **and** the recorded
+/// PID responds to a signal check. This is the ground-truth observation of
+/// the OS state — distinct from `is_running()`, which reflects user intent
+/// stored in the database.
 #[allow(clippy::unused_async)]
 pub async fn is_alive(_ctx: &AppContext, server: &Model) -> bool {
-    server.status() == ServerStatus::Running
+    server.is_running() && server.pid.is_some_and(check_pid_alive)
 }
 
 #[async_trait::async_trait]
@@ -451,12 +450,18 @@ impl Model {
 
     /// Start this game server using its boot script or default executable.
     ///
-    /// Delegates to [`GameServerInstaller::start`] and updates the server's
-    /// status to [`ServerStatus::Running`] when a process is launched.
+    /// Returns early with `Ok(false)` if the server is already running or
+    /// currently installing. Otherwise delegates to
+    /// [`GameServerInstaller::start`] and updates the server's status to
+    /// [`ServerStatus::Running`] when a process is launched.
     ///
     /// # Errors
     /// Returns a [`GameServerError`] if the start command fails.
     pub async fn start(&self, ctx: &AppContext) -> std::result::Result<bool, GameServerError> {
+        // Guard: don't restart if already alive or installing.
+        if is_alive(ctx, self).await || self.status() == ServerStatus::Installing {
+            return Ok(false);
+        }
         let installer = crate::data::game_server_installer::GameServerInstaller::new(ctx);
         let started = installer.start(self).await?.is_some();
         if started {

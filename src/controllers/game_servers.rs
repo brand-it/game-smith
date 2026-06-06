@@ -197,16 +197,10 @@ pub async fn start_server(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
-
-    if game_servers::is_alive(&ctx, &server).await || server.status() == ServerStatus::Installing {
-        return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
-    }
-
     server
         .start(&ctx)
         .await
         .map_err(|e| StandardError::InternalServerError(format!("failed to start server: {e}")))?;
-
     Ok(Redirect::to(&format!("/servers/{id}")).into_response())
 }
 
@@ -224,10 +218,8 @@ pub async fn stop_server(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
-
-    let installer = GameServerInstaller::new(&ctx);
-    installer
-        .stop(&server)
+    server
+        .stop(&ctx)
         .await
         .map_err(|e| StandardError::InternalServerError(format!("failed to stop server: {e}")))?;
 
