@@ -36,7 +36,9 @@ fn check_pid_alive_impl(pid: i64) -> bool {
     let alive = success && exit_code == STILL_ACTIVE;
 
     // Always close the handle to avoid leaks.
-    let _ = unsafe { CloseHandle(handle) };
+    // Always close the handle to avoid leaks. CloseHandle panics if the
+    // Win32 call fails, which is the desired behavior (handle leak is a bug).
+    unsafe { CloseHandle(handle) };
 
     alive
 }
@@ -58,7 +60,7 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
     let result = unsafe { TerminateProcess(handle, 1) }.is_ok();
 
     // Always close the handle to avoid leaks.
-    let _ = unsafe { CloseHandle(handle) };
+    unsafe { CloseHandle(handle) };
 
     result
 }
@@ -110,9 +112,9 @@ mod tests {
     fn check_pid_alive_lifecycle() {
         // Spawn a long-running process using cmd.exe
         let mut child = std::process::Command::new("cmd")
-            .args(["/c", "timeout", "/t", "60"])
+            .args(["/c", "ping", "-n", "61", "127.0.0.1"])
             .spawn()
-            .expect("spawn cmd timeout");
+            .expect("spawn ping");
         let pid = child.id() as i64;
 
         // Give the process time to start
@@ -125,7 +127,7 @@ mod tests {
         assert!(kill_pid(pid, 0), "kill_pid should succeed");
 
         // Reap the child
-        let _ = child.wait();
+        child.wait().expect("wait for child");
 
         // Verify dead
         assert!(
@@ -144,7 +146,7 @@ mod tests {
         let pid = child.id() as i64;
 
         // Wait for it to finish
-        let _ = child.wait();
+        child.wait().expect("wait for child");
 
         // Verify it's dead
         assert!(!check_pid_alive(pid), "exited process should not be alive");
