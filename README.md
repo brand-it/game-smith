@@ -100,9 +100,9 @@ After installation the **Game Smith** icon appears in your application launcher 
 Install the `.rpm` package. The change takes effect after a reboot (or immediately with `--apply-live`):
 
 ```sh
-rpm-ostree install game-smith-0.3.0-1.x86_64.rpm
+rpm-ostree install game-smith-0.4.0-1.x86_64.rpm
 # Optional: apply without rebooting
-rpm-ostree install --apply-live game-smith-0.3.0-1.x86_64.rpm
+rpm-ostree install --apply-live game-smith-0.4.0-1.x86_64.rpm
 ```
 
 This installs:
@@ -115,14 +115,14 @@ This installs:
 The `.AppImage` is self-contained. Download it, mark it executable, and run it:
 
 ```sh
-chmod +x game-smith_0.3.0_x86_64.AppImage
-./game-smith_0.3.0_x86_64.AppImage start
+chmod +x game-smith_0.4.0_x86_64.AppImage
+./game-smith_0.4.0_x86_64.AppImage start
 ```
 
 To integrate with your desktop launcher:
 ```sh
 mkdir -p ~/Applications
-mv game-smith_0.3.0_x86_64.AppImage ~/Applications/game-smith.AppImage
+mv game-smith_0.4.0_x86_64.AppImage ~/Applications/game-smith.AppImage
 # The tray icon and desktop entry are handled by the app itself
 ```
 

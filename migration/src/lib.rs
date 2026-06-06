@@ -8,7 +8,7 @@ mod m20260524_201932_command_run_title;
 mod m20260524_211537_create_game_servers;
 mod m20260525_000001_create_steam_credentials;
 mod m20260527_225027_add_use_steam_login;
-mod m20260606_000001_remove_game_servers_pid;
+mod m20260606_164320_remove_pid_from_game_servers;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -20,7 +20,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260524_211537_create_game_servers::Migration),
             Box::new(m20260525_000001_create_steam_credentials::Migration),
             Box::new(m20260527_225027_add_use_steam_login::Migration),
-            Box::new(m20260606_000001_remove_game_servers_pid::Migration),
+            Box::new(m20260606_164320_remove_pid_from_game_servers::Migration),
             // inject-above (do not remove this comment)
         ]
     }

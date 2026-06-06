@@ -6,6 +6,8 @@ on:
 
 env:
   RUST_TOOLCHAIN: "1.95.0"
+  CARGO_INCREMENTAL: "0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build:
@@ -33,7 +35,25 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - uses: swatinem/rust-cache@v2
+      - name: Cache cargo registry
+        if: "!startsWith(matrix.os, 'windows')"
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ matrix.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ matrix.os }}-cargo-target-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-cargo-target-${{ github.job }}-
 
       - name: Install system dependencies
         if: matrix.install-cmd != ''
@@ -51,5 +71,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: target/release/game-smith${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          path: target/release/game-smith${{ startsWith(matrix.os, 'windows') && '.exe' || '' }}
           retention-days: 7
