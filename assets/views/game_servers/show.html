@@ -10,6 +10,8 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- Header: back link + server name + status -->
 <div class="mb-6">
     <a href="/servers"
         class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr;
@@ -20,28 +22,31 @@
     </div>
 </div>
 
-<!-- 2-column layout: Server Settings (left, full height) | Actions + Settings (right, stacked) -->
+<!-- 2-column layout: Server Settings (left) | Actions + Settings (right, stacked) -->
 <div class="grid grid-cols-2 gap-5 mb-5">
-    <!-- Server Settings (left column, full height) -->
+
+    <!-- ═══ Left column: Server Settings ═══ -->
     <div class="bg-white border border-gray-200 rounded-lg p-6">
-        <h2
-            class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{
-            t(key="servers-edit-settings", lang="en-US") }}</h2>
+        <h2 class="section-heading mb-4">{{ t(key="servers-edit-settings",
+            lang="en-US") }}</h2>
+
         {% if server.is_running %}
         <p class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
             {{ t(key="servers-running-locked", lang="en-US") }}
         </p>
         {% endif %}
+
         <form action="/servers/{{ server.id }}/settings" method="post">
+
             <!-- App ID (read-only) -->
             <div class="mb-4">
                 <label for="app_id"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-app-id", lang="en-US") }}</label>
                 <input type="text" id="app_id" value="{{ server.app_id }}"
-                    disabled
-                    class="block w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed">
+                    disabled class="form-input-disabled">
             </div>
+
             <!-- Server Name -->
             <div class="mb-4">
                 <label for="name"
@@ -51,17 +56,18 @@
                     server.is_running %}required{% endif %}
                     value="{{ server.name }}" {% if server.is_running
                     %}disabled{% endif %}
-                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
+                    class="{% if server.is_running %}form-input-disabled{% else %}form-input{% endif %}">
             </div>
+
             <!-- Platform (read-only) -->
             <div class="mb-4">
                 <label for="platform"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-platform", lang="en-US") }}</label>
                 <input type="text" id="platform" value="{{ server.platform }}"
-                    disabled
-                    class="block w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed">
+                    disabled class="form-input-disabled">
             </div>
+
             <!-- Install Directory -->
             <div class="mb-4">
                 <label for="install_dir"
@@ -71,8 +77,9 @@
                     server.is_running %}required{% endif %}
                     value="{{ server.install_dir }}" {% if server.is_running
                     %}disabled{% endif %}
-                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-xs font-mono text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-xs font-mono text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
+                    class="{% if server.is_running %}form-input-mono-disabled{% else %}form-input-mono{% endif %}">
             </div>
+
             <!-- Server Mod -->
             <div class="mb-4">
                 <label for="server_mod"
@@ -81,8 +88,9 @@
                 <input type="text" name="server_mod" id="server_mod"
                     value="{{ server.server_mod | default(value="") }}" {% if
                     server.is_running %}disabled{% endif %}
-                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
+                    class="{% if server.is_running %}form-input-disabled{% else %}form-input{% endif %}">
             </div>
+
             <!-- Beta Branch -->
             <div class="mb-4">
                 <label for="beta_branch"
@@ -91,8 +99,9 @@
                 <input type="text" name="beta_branch" id="beta_branch"
                     value="{{ server.beta_branch | default(value="") }}" {% if
                     server.is_running %}disabled{% endif %}
-                    class="block w-full px-3 py-2 border {% if server.is_running %}border-gray-200 rounded-lg text-sm text-slate-500 bg-gray-50 cursor-not-allowed{% else %}border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200{% endif %}">
+                    class="{% if server.is_running %}form-input-disabled{% else %}form-input{% endif %}">
             </div>
+
             <!-- Login Mode -->
             <div class="mb-5">
                 <label
@@ -119,6 +128,8 @@
                 </p>
                 {% endif %}
             </div>
+
+            <!-- Last Error -->
             {% if server.last_error %}
             <div class="mb-4 p-2 bg-red-50 rounded">
                 <dt class="text-xs text-slate-400 mb-0.5">{{
@@ -127,42 +138,45 @@
                     }}</dd>
             </div>
             {% endif %}
+
+            <!-- Save button -->
             <div>
                 <button type="submit" {% if server.is_running %}disabled{% endif
                     %}
-                    class="px-5 py-2 text-sm font-medium text-white {% if server.is_running %}bg-slate-300 cursor-not-allowed{% else %}bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700{% endif %} rounded-lg">
+                    class="{% if server.is_running %}btn-primary-disabled{% else %}btn-primary{% endif %}">
                     {{ t(key="servers-save-settings", lang="en-US") }}
                 </button>
             </div>
         </form>
     </div>
 
-    <!-- Right column: Actions on top, Settings below -->
+    <!-- ═══ Right column: Actions + Settings ═══ -->
     <div class="flex flex-col gap-5">
+
         <!-- Actions -->
         <div class="bg-white border border-gray-200 rounded-lg p-6">
-            <h2
-                class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-4">{{
-                t(key="servers-actions", lang="en-US") }}</h2>
+            <h2 class="section-heading mb-4">{{ t(key="servers-actions",
+                lang="en-US") }}</h2>
             <div class="flex flex-col gap-2">
+
                 {% if not server.is_running and server.status != "installing" %}
                 <form action="/servers/{{ server.id }}/start" method="post"
                     class="m-0">
-                    <button type="submit"
-                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-green-700">
+                    <button type="submit" class="btn-action-green">
                         ▶&nbsp; {{ t(key="servers-start", lang="en-US") }}
                     </button>
                 </form>
                 {% endif %}
+
                 {% if server.is_running %}
                 <form action="/servers/{{ server.id }}/stop" method="post"
                     class="m-0">
-                    <button type="submit"
-                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-red-700">
+                    <button type="submit" class="btn-action-red">
                         ■&nbsp; {{ t(key="servers-stop", lang="en-US") }}
                     </button>
                 </form>
                 {% endif %}
+
                 {% if server.status == "installing" %}
                 <div
                     class="flex items-center gap-2 px-2 py-2 text-sm text-blue-700">
@@ -174,35 +188,34 @@
                         <path class="opacity-75" fill="currentColor"
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
-                    Installation in progress…
+                    Installation in progress&hellip;
                 </div>
                 {% endif %}
+
                 {% if not server.is_running and server.status != "installing" %}
                 <form action="/servers/{{ server.id }}/update" method="post"
                     class="m-0">
-                    <button type="submit"
-                        class="w-full px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer text-left transition-colors hover:bg-blue-700">
+                    <button type="submit" class="btn-action-blue">
                         ↻&nbsp; {{ t(key="servers-update", lang="en-US") }}
                     </button>
                 </form>
                 {% endif %}
+
                 <form action="/servers/{{ server.id }}/delete" method="post"
                     class="m-0"
                     onsubmit="return confirm('{{ t(key="servers-delete-confirm",
                     lang="en-US" ) }}')">
-                    <button type="submit"
-                        class="w-full px-4 py-2.5 text-sm font-medium text-slate-500 bg-slate-50 rounded-lg border border-gray-200 cursor-pointer text-left transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-300">
+                    <button type="submit" class="btn-danger">
                         {{ t(key="servers-delete", lang="en-US") }}
                     </button>
                 </form>
             </div>
         </div>
 
-        <!-- Settings -->
+        <!-- Settings (auto-start / auto-restart) -->
         <div class="bg-white border border-gray-200 rounded-lg p-6 h-full">
-            <h2
-                class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
-                t(key="servers-settings", lang="en-US") }}</h2>
+            <h2 class="section-heading mb-1">{{ t(key="servers-settings",
+                lang="en-US") }}</h2>
             <p class="text-sm text-slate-500 m-0 mb-3">{{
                 t(key="servers-auto-start-help", lang="en-US") }}</p>
             <form action="/servers/{{ server.id }}/auto-start" method="post"
@@ -213,7 +226,7 @@
                     <input type="checkbox" id="auto-start-toggle" {% if
                         server.auto_start %}checked{% endif %} {% if
                         server.is_running %}disabled{% else
-                        %}onchange="handleAutoStart(event)" {% endif %}>
+                        %}onchange="handleAutoStart()" {% endif %}>
                     <span class="toggle-track"></span>
                     <span class="toggle-knob"></span>
                 </label>
@@ -230,7 +243,7 @@
                     <input type="checkbox" id="auto-restart-toggle" {% if
                         server.auto_restart %}checked{% endif %} {% if
                         server.is_running %}disabled{% else
-                        %}onchange="handleAutoRestart(event)" {% endif %}>
+                        %}onchange="handleAutoRestart()" {% endif %}>
                     <span class="toggle-track"></span>
                     <span class="toggle-knob"></span>
                 </label>
@@ -241,32 +254,31 @@
     </div>
 </div>
 
+<!-- ═══ Boot Script ═══ -->
 <div class="bg-white border border-gray-200 rounded-lg p-6">
-    <h2
-        class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
-        t(key="servers-boot-script", lang="en-US") }}</h2>
+    <h2 class="section-heading mb-1">{{ t(key="servers-boot-script",
+        lang="en-US") }}</h2>
     <p class="text-sm text-slate-500 m-0 mb-3">{{
         t(key="servers-boot-script-help", lang="en-US") }}</p>
     <form action="/servers/{{ server.id }}/boot-script" method="post">
         <textarea name="boot_script" rows="5" {% if server.is_running
             %}disabled{% endif %}
-            class="block w-full px-3 py-2.5 border {% if server.is_running %}border-gray-200 rounded-lg font-mono text-sm text-slate-500 bg-gray-50 cursor-not-allowed resize-none{% else %}border-gray-300 rounded-lg font-mono text-sm text-slate-900 bg-slate-50 resize-none outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:bg-white{% endif %}"
+            class="{% if server.is_running %}form-textarea-disabled{% else %}form-textarea{% endif %}"
             placeholder="# e.g. ./srcds_run -game csgo +map de_dust2">{{ server.boot_script|default(value="") }}</textarea>
         <div class="mt-2.5">
             <button type="submit" {% if server.is_running %}disabled{% endif %}
-                class="px-5 py-2 text-sm font-medium text-white {% if server.is_running %}bg-slate-300 cursor-not-allowed{% else %}bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700{% endif %} rounded-lg">
+                class="{% if server.is_running %}btn-primary-disabled{% else %}btn-primary{% endif %}">
                 {{ t(key="servers-save-boot-script", lang="en-US") }}
             </button>
         </div>
     </form>
 </div>
 
-<!-- Command Output -->
+<!-- ═══ Command Output ═══ -->
 {% if latest_run %}
 <div class="mt-5 bg-white border border-gray-200 rounded-lg p-6">
-    <h2
-        class="text-xs font-semibold text-slate-500 uppercase tracking-wide m-0 mb-1">{{
-        t(key="servers-command-output", lang="en-US") }}</h2>
+    <h2 class="section-heading mb-1">{{ t(key="servers-command-output",
+        lang="en-US") }}</h2>
     <p class="text-sm text-slate-500 m-0 mb-3">{{
         t(key="servers-command-output-help", lang="en-US") }}</p>
 
@@ -319,7 +331,9 @@
         class="overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300 max-h-[480px] whitespace-pre-wrap break-words">{{ run_log }}</pre>
 </div>
 {% endif %}
+
 {% endblock %}
+
 {% block extra_scripts %}
 {% if latest_run %}
 <script src="/static/js/commands.js"></script>
@@ -327,21 +341,5 @@
     connectToCommand({{ latest_run.id }}, "{{ latest_run.status }}");
 </script>
 {% endif %}
-<script>
-function handleAutoStart(event) {
-    var checkbox = document.getElementById('auto-start-toggle');
-    var hidden = document.getElementById('auto-start-value');
-    hidden.value = checkbox.checked ? 'true' : 'false';
-    var form = document.getElementById('auto-start-form');
-    if (form) form.requestSubmit();
-}
-
-function handleAutoRestart(event) {
-    var checkbox = document.getElementById('auto-restart-toggle');
-    var hidden = document.getElementById('auto-restart-value');
-    hidden.value = checkbox.checked ? 'true' : 'false';
-    var form = document.getElementById('auto-restart-form');
-    if (form) form.requestSubmit();
-}
-</script>
+<script src="/static/js/server-show.js"></script>
 {% endblock %}

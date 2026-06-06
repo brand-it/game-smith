@@ -286,9 +286,9 @@ async fn test_find_running_returns_zombie_servers() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].id, server.id);
 
-    // is_alive trusts the DB status when no command runs exist
-    // (could be a fresh start or zombie — pid_liveness handles cleanup)
-    assert!(is_alive(&boot.app_context, &found[0]).await);
+    // is_alive checks the actual process — with no real PID set,
+    // it returns false even though DB status is Running.
+    assert!(!is_alive(&boot.app_context, &found[0]).await);
 }
 
 /// update() must not return a WriteScript error when install_dir does not exist.
