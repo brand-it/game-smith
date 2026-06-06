@@ -18,7 +18,7 @@ jobs:
         include:
           - os: ubuntu-latest
             name: linux
-          - os: windows-2025-vs2026
+          - os: windows-latest
             name: windows
     runs-on: ${{ matrix.os }}
     steps:
@@ -28,7 +28,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Cache cargo registry
-        if: matrix.os != 'windows-2025-vs2026'
+        if: !startsWith(matrix.os, 'windows')
         uses: actions/cache@v4
         with:
           path: |

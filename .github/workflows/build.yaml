@@ -127,7 +127,7 @@ jobs:
 
   package-windows:
     name: Build Windows MSI
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     permissions:
       contents: read
     steps:
