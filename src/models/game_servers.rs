@@ -132,79 +132,6 @@ pub fn default_install_dir(name: &str) -> String {
         format!("{home}/game-smith/games/{slug}")
     }
 }
-/// Cross-platform signal constant for termination.
-/// Resolves to `libc::SIGTERM` on Linux; `0` on Windows (ignored by `kill_pid`).
-#[cfg(target_os = "windows")]
-pub const TERM_SIGNAL: i32 = 0;
-
-#[cfg(target_os = "linux")]
-use libc;
-
-#[cfg(target_os = "linux")]
-pub const TERM_SIGNAL: libc::c_int = libc::SIGTERM;
-/// Check if a process is alive by sending signal 0.
-/// Returns `true` if the process exists and is accessible.
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-#[cfg(target_os = "linux")]
-pub fn check_pid_alive(pid: i64) -> bool {
-    let result = unsafe { libc::kill(pid as libc::c_int, 0) };
-    result == 0
-}
-
-/// Check if a process is alive on Windows.
-/// Opens the process with `PROCESS_QUERY_INFORMATION` and checks if the
-/// handle is still valid.
-#[must_use]
-#[cfg(target_os = "windows")]
-pub fn check_pid_alive(pid: i64) -> bool {
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
-    unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, false, pid as u32).is_ok() }
-}
-
-/// Send a signal to a process by PID (Linux: `libc::kill`).
-/// Returns `Ok(())` on success, `Err` if the process couldn't be signaled.
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-#[cfg(target_os = "linux")]
-pub fn kill_pid(pid: i64, signal: libc::c_int) -> libc::c_int {
-    unsafe { libc::kill(pid as libc::c_int, signal) }
-}
-
-/// Send a signal to an entire process group by PGID.
-///
-/// Passing a negative process ID to `kill(2)` targets the process group
-/// rather than a single process. The PGID is stored as a positive `i64`
-/// in the database (it's the child's PID after `setpgid(0, 0)`).
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-#[cfg(target_os = "linux")]
-pub fn kill_process_group(pgid: i64, signal: libc::c_int) -> libc::c_int {
-    // Negative PGID signals the entire group.
-    unsafe { libc::kill(-(pgid as libc::c_int), signal) }
-}
-
-/// Check if any process in a process group is still alive.
-///
-/// Signal-0 to a negative PGID succeeds if the group exists.
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-#[cfg(target_os = "linux")]
-pub fn check_process_group_alive(pgid: i64) -> bool {
-    unsafe { libc::kill(-(pgid as libc::c_int), 0) == 0 }
-}
-
-/// Terminate a process by PID on Windows using `TerminateProcess`.
-/// The `_signal` parameter is ignored on Windows (process is always terminated).
-#[must_use]
-#[cfg(target_os = "windows")]
-pub fn kill_pid(pid: i64, _signal: i32) -> bool {
-    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
-    let Ok(handle) = (unsafe { OpenProcess(PROCESS_TERMINATE, false, pid as u32) }) else {
-        return false;
-    };
-    unsafe { TerminateProcess(handle, 1).is_ok() }
-}
 
 /// Check whether this server has any alive processes on the system.
 ///
@@ -216,7 +143,8 @@ pub async fn is_alive(ctx: &AppContext, server: &Model) -> bool {
         .await
         .unwrap_or_default();
 
-    runs.iter().any(|r| r.pid.is_some_and(check_pid_alive))
+    runs.iter()
+        .any(|r| r.pid.is_some_and(crate::models::process::check_pid_alive))
 }
 
 #[async_trait::async_trait]
@@ -540,27 +468,6 @@ impl Model {
 
 impl Entity {}
 
-#[cfg(all(test, target_os = "linux"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn term_signal_is_sigterm() {
-        assert_eq!(TERM_SIGNAL, libc::SIGTERM);
-    }
-
-    #[test]
-    fn check_pid_alive_returns_true_for_self() {
-        let pid = std::process::id() as i64;
-        assert!(check_pid_alive(pid));
-    }
-
-    #[test]
-    fn check_pid_alive_returns_false_for_nonexistent() {
-        assert!(!check_pid_alive(999999));
-    }
-}
-
 #[cfg(test)]
 mod sanitize_tests {
     use super::*;
@@ -608,20 +515,5 @@ mod sanitize_tests {
     fn sanitize_keeps_unicode() {
         let out = sanitize_boot_script("café ☕ 你好");
         assert_eq!(out, "café ☕ 你好");
-    }
-}
-
-#[cfg(all(test, target_os = "windows"))]
-mod windows_tests {
-    use super::*;
-
-    #[test]
-    fn term_signal_is_zero_on_windows() {
-        assert_eq!(TERM_SIGNAL, 0);
-    }
-
-    #[test]
-    fn kill_pid_returns_false_for_nonexistent_process() {
-        assert!(!kill_pid(999999, 0));
     }
 }

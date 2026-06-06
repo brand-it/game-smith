@@ -481,7 +481,7 @@ impl GameServerInstaller {
                 .await?;
         for run in runs {
             if let Some(pid) = run.pid {
-                if !crate::models::game_servers::check_pid_alive(pid) {
+                if !crate::models::process::check_pid_alive(pid) {
                     continue;
                 }
                 // Fire SIGTERM at the entire process group and return immediately.
@@ -489,7 +489,10 @@ impl GameServerInstaller {
                 // liveness task will reconcile DB state with ground truth.
                 #[cfg(target_os = "linux")]
                 {
-                    let ret = game_servers::kill_process_group(pid, game_servers::TERM_SIGNAL);
+                    let ret = crate::models::process::kill_process_group(
+                        pid,
+                        crate::models::process::TERM_SIGNAL,
+                    );
                     if ret == 0 {
                         info!(
                             server_id = server.id,
@@ -505,13 +508,17 @@ impl GameServerInstaller {
                             error = ?std::io::Error::last_os_error(),
                             "Failed to signal process group; falling back to single PID"
                         );
-                        let _ = game_servers::kill_pid(pid, game_servers::TERM_SIGNAL);
+                        let _ = crate::models::process::kill_pid(
+                            pid,
+                            crate::models::process::TERM_SIGNAL,
+                        );
                     }
                 }
 
                 #[cfg(target_os = "windows")]
                 {
-                    let _ = game_servers::kill_pid(pid, game_servers::TERM_SIGNAL);
+                    let _ =
+                        crate::models::process::kill_pid(pid, crate::models::process::TERM_SIGNAL);
                     info!(
                         server_id = server.id,
                         run_id = run.id,

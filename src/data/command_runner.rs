@@ -185,7 +185,7 @@ impl CommandRunner {
 
         // If we have a PID, verify the process is actually alive
         if let Some(pid) = model.pid {
-            let alive = crate::models::game_servers::check_pid_alive(pid);
+            let alive = crate::models::process::check_pid_alive(pid);
             return Ok(alive);
         }
 
@@ -211,10 +211,7 @@ impl CommandRunner {
 
         // Try to terminate the process if we have a PID
         if let Some(pid) = model.pid {
-            let _ = crate::models::game_servers::kill_pid(
-                pid,
-                crate::models::game_servers::TERM_SIGNAL,
-            );
+            let _ = crate::models::process::kill_pid(pid, crate::models::process::TERM_SIGNAL);
         }
 
         // Mark as stopped in DB

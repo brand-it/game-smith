@@ -3,7 +3,7 @@ use tracing::{error, info};
 
 use crate::models::command_runs;
 use crate::models::command_runs::CommandStatus;
-use crate::models::game_servers;
+use crate::models::process;
 
 pub struct PidLiveness;
 
@@ -29,9 +29,7 @@ impl Task for PidLiveness {
         );
 
         for run in running {
-            let should_mark_failed = run
-                .pid
-                .is_none_or(|pid| !game_servers::check_pid_alive(pid));
+            let should_mark_failed = run.pid.is_none_or(|pid| !process::check_pid_alive(pid));
 
             if should_mark_failed {
                 mark_dead(app_context, run).await;
