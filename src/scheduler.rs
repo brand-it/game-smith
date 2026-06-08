@@ -100,6 +100,7 @@ pub async fn run_scheduler(ctx: &AppContext) -> loco_rs::Result<()> {
 
     let mut registry = TaskRegistry::new();
     registry.register(crate::tasks::pid_liveness::PidLiveness);
+    registry.register(crate::tasks::log_cleanup::LogCleanup);
 
     let mut handles = Vec::new();
 
