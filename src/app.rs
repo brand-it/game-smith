@@ -57,7 +57,7 @@ impl Hooks for App {
                     enable: true,
                     non_blocking: true,
                     level: loco_rs::logger::LogLevel::Info,
-                    format: loco_rs::logger::Format::Json,
+                    format: loco_rs::logger::Format::Compact,
                     rotation: loco_rs::logger::Rotation::Daily,
                     dir: Some(logs_dir),
                     filename_prefix: Some("game-smith".to_string()),
