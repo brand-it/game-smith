@@ -94,3 +94,34 @@ impl super::CommandExecWorker {
         Ok(Self::determine_status(status))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify successful exit maps to Completed with code 0.
+    #[test]
+    fn determine_status_maps_success() {
+        let status = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("exit 0")
+            .status()
+            .expect("failed to run command");
+        let (cmd_status, code) = super::super::CommandExecWorker::determine_status(status);
+        assert_eq!(cmd_status, CommandStatus::Completed);
+        assert_eq!(code, Some(0));
+    }
+
+    /// Verify non-zero exit maps to Failed with the correct code.
+    #[test]
+    fn determine_status_maps_failure() {
+        let status = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("exit 42")
+            .status()
+            .expect("failed to run command");
+        let (cmd_status, code) = super::super::CommandExecWorker::determine_status(status);
+        assert_eq!(cmd_status, CommandStatus::Failed);
+        assert_eq!(code, Some(42));
+    }
+}
