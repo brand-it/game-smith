@@ -30,10 +30,20 @@
 
     <!-- Server cards -->
     <div id="server-list" class="space-y-2">
-        <div class="loading-placeholder placeholder">
-            <div class="shutdown-icon loading-icon"></div>
-            Fetching server list&hellip;
+        {% for server in servers %}
+        <div class="server-card" id="server-{{ server.id }}">
+            <div class="server-dot"></div>
+            <div class="server-info">
+                <div class="server-name">{{ server.name }}</div>
+                <div class="server-detail server-error"></div>
+            </div>
+            <span class="status-badge pending">Pending</span>
         </div>
+        {% else %}
+        <div class="loading-placeholder">
+            <div class="server-detail">No servers to stop</div>
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endblock %}

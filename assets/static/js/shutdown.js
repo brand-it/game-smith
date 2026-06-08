@@ -3,8 +3,9 @@
 /**
  * Shutdown status poller.
  *
- * Polls /shutdown/status every 500ms and renders a live-updating
- * progress view with per-server status. Declares shutdown complete
+ * Polls /shutdown/status every 500ms and updates the live progress view
+ * with per-server status. Updates individual DOM elements by ID rather
+ * than rebuilding the entire server list. Declares shutdown complete
  * only after the API explicitly reports so, or after consecutive
  * fetch failures (server process has died).
  */
@@ -35,7 +36,7 @@
                 throw new Error("Invalid response");
             }
             consecutiveFailures = 0;
-            renderServers(data.servers || []);
+            updateServers(data.servers || []);
             updateProgress(data.servers || []);
             if (data.shutting_down) {
                 updateOverall(true);
@@ -54,16 +55,8 @@
         }
     }
 
-    function escapeHtml(str) {
-        var div = document.createElement("div");
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     function statusLabel(status) {
         switch (status) {
-            case "pending":
-                return "Pending";
             case "stopping":
                 return "Stopping";
             case "stopped":
@@ -71,48 +64,47 @@
             case "failed":
                 return "Failed";
             default:
-                return escapeHtml(String(status));
+                return String(status);
         }
     }
 
-    function renderServers(servers) {
-        if (!serverList) return;
-        if (!servers || servers.length === 0) {
-            serverList.innerHTML =
-                '<div class="loading-placeholder">' +
-                '<div class="server-detail">No servers to stop</div>' +
-                "</div>";
-            return;
-        }
-        serverList.innerHTML = servers.map(function (s) {
-            var errorHtml = "";
-            if (s.status === "failed" && s.error) {
-                errorHtml =
-                    '<div class="server-detail" style="color:#b91c1c;">' +
-                    escapeHtml(s.error) +
-                    "</div>";
+    function updateServers(servers) {
+        if (!serverList || !servers || servers.length === 0) return;
+
+        servers.forEach(function (s) {
+            var card = document.getElementById("server-" + s.id);
+            if (!card) return;
+
+            // Update server card status class
+            card.className = "server-card " + s.status;
+
+            // Update server dot
+            var dot = card.querySelector(".server-dot");
+            if (dot) dot.className = "server-dot " + s.status;
+
+            // Update server name
+            var nameEl = card.querySelector(".server-name");
+            if (nameEl) nameEl.textContent = s.name;
+
+            // Update error text
+            var errorEl = card.querySelector(".server-error");
+            if (errorEl) {
+                if (s.status === "failed" && s.error) {
+                    errorEl.textContent = s.error;
+                    errorEl.classList.add("error");
+                } else {
+                    errorEl.textContent = "";
+                    errorEl.classList.remove("error");
+                }
             }
-            return (
-                '<div class="server-card ' +
-                s.status +
-                '">' +
-                '<div class="server-dot ' +
-                s.status +
-                '"></div>' +
-                '<div class="server-info">' +
-                '<div class="server-name">' +
-                escapeHtml(s.name) +
-                "</div>" +
-                errorHtml +
-                "</div>" +
-                '<span class="status-badge ' +
-                s.status +
-                '">' +
-                statusLabel(s.status) +
-                "</span>" +
-                "</div>"
-            );
-        }).join("");
+
+            // Update status badge
+            var badge = card.querySelector(".status-badge");
+            if (badge) {
+                badge.className = "status-badge " + s.status;
+                badge.textContent = statusLabel(s.status);
+            }
+        });
     }
 
     function updateProgress(servers) {
@@ -136,15 +128,15 @@
     }
 
     function verifyServerDead() {
-        // API reports shutdown is done — confirm the server process
+        // API reports shutdown is done \u2014 confirm the server process
         // has actually died by checking that /ping stops responding.
         fetch("/ping")
             .then(function () {
-                // Server still responding — wait and try again.
+                // Server still responding \u2014 wait and try again.
                 setTimeout(verifyServerDead, 500);
             })
             .catch(function () {
-                // Server no longer responds — safe to mark complete.
+                // Server no longer responds \u2014 safe to mark complete.
                 markComplete();
             });
     }
