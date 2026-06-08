@@ -4,28 +4,39 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-#[cfg(target_os = "linux")]
-use flate2::read::GzDecoder;
 use loco_rs::app::SharedStore;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
 use crate::AppDirs;
 
-/// Download URLs for `SteamCMD` platform archives.
-#[cfg(not(target_os = "windows"))]
-const STEAMCMD_LINUX_URL: &str =
-    "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz";
-#[cfg(target_os = "windows")]
-const STEAMCMD_WINDOWS_URL: &str = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip";
+// Platform-specific modules
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::{BINARY_NAME, DOWNLOAD_URL, TEMP_FILE_NAME};
 
-/// Name of the steamcmd data directory inside the application data directory.
-const STEAMCMD_DIR_NAME: &str = "steamcmd";
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::{BINARY_NAME, DOWNLOAD_URL, TEMP_FILE_NAME};
+
+use linux_or_windows::extract;
+
+mod linux_or_windows {
+    #[cfg(target_os = "linux")]
+    pub use super::linux::extract;
+    #[cfg(target_os = "windows")]
+    pub use super::windows::extract;
+}
 
 /// The HLDS app ID has special handling — `app_update` must be run multiple
 /// times to download all engine files.
 const HLDS_APP_ID: u32 = 90;
 const HLDS_UPDATE_RETRIES: u32 = 5;
+
+/// Name of the steamcmd data directory inside the application data directory.
+const STEAMCMD_DIR_NAME: &str = "steamcmd";
 
 /// Health status of the `SteamCMD` installation.
 ///
@@ -92,6 +103,7 @@ pub fn tera_steamcmd_health(
     let status = health_status().map_or("checking", |s| s.as_str());
     Ok(::tera::Value::String(status.to_owned()))
 }
+
 /// Errors that can occur during `SteamCMD` operations.
 #[derive(Debug)]
 pub enum SteamCmdError {
@@ -155,12 +167,7 @@ impl SteamCmd {
     #[must_use]
     pub fn new(dirs: &AppDirs) -> Self {
         let steamcmd_dir = dirs.app_dir.join(STEAMCMD_DIR_NAME);
-
-        #[cfg(target_os = "windows")]
-        let binary_path = steamcmd_dir.join("steamcmd.exe");
-        #[cfg(not(target_os = "windows"))]
-        let binary_path = steamcmd_dir.join("steamcmd.sh");
-
+        let binary_path = steamcmd_dir.join(BINARY_NAME);
         Self {
             steamcmd_dir,
             binary_path,
@@ -248,13 +255,18 @@ impl SteamCmd {
     pub async fn install(&self) -> Result<(), SteamCmdError> {
         std::fs::create_dir_all(&self.steamcmd_dir).map_err(SteamCmdError::CreateDir)?;
 
-        #[cfg(target_os = "windows")]
-        {
-            self.download_and_extract_zip(STEAMCMD_WINDOWS_URL).await
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.download_and_extract_tar(STEAMCMD_LINUX_URL).await
+        let temp_path = self.download_to_temp(DOWNLOAD_URL).await?;
+        extract(&self.steamcmd_dir, &temp_path)?;
+
+        if self.is_installed() {
+            info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
+            Ok(())
+        } else {
+            error!("SteamCMD installation failed: binary not found after extraction");
+            Err(SteamCmdError::Extract(io::Error::new(
+                io::ErrorKind::NotFound,
+                "binary not found after extraction",
+            )))
         }
     }
 
@@ -263,11 +275,7 @@ impl SteamCmd {
         let temp_dir = self.steamcmd_dir.join("temp");
         std::fs::create_dir_all(&temp_dir).map_err(SteamCmdError::CreateDir)?;
 
-        let temp_path = if cfg!(target_os = "windows") {
-            temp_dir.join("steamcmd.zip")
-        } else {
-            temp_dir.join("steamcmd.tar.gz")
-        };
+        let temp_path = temp_dir.join(TEMP_FILE_NAME);
 
         info!(url = url, "Downloading SteamCMD archive...");
         let response = reqwest::get(url)
@@ -290,71 +298,6 @@ impl SteamCmd {
 
         debug!(path = %temp_path.display(), "Download complete");
         Ok(temp_path)
-    }
-
-    /// Downloads and extracts a tar.gz archive.
-    #[cfg(not(target_os = "windows"))]
-    async fn download_and_extract_tar(&self, url: &str) -> Result<(), SteamCmdError> {
-        let temp_path = self.download_to_temp(url).await?;
-
-        info!(path = %temp_path.display(), "Extracting SteamCMD tar archive...");
-        let bytes = tokio::fs::read(&temp_path)
-            .await
-            .map_err(SteamCmdError::Io)?;
-
-        let decoder = GzDecoder::new(bytes.as_slice());
-        let mut archive = tar::Archive::new(decoder);
-        archive
-            .unpack(&self.steamcmd_dir)
-            .map_err(SteamCmdError::Extract)?;
-
-        // Clean up temp file
-        let _ = tokio::fs::remove_file(&temp_path).await;
-        let _ = tokio::fs::remove_dir(&self.steamcmd_dir.join("temp")).await;
-
-        if self.is_installed() {
-            info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
-            Ok(())
-        } else {
-            error!("SteamCMD installation failed: binary not found after extraction");
-            Err(SteamCmdError::Extract(io::Error::new(
-                io::ErrorKind::NotFound,
-                "binary not found after extraction",
-            )))
-        }
-    }
-
-    /// Downloads and extracts a zip archive.
-    #[cfg(target_os = "windows")]
-    async fn download_and_extract_zip(&self, url: &str) -> Result<(), SteamCmdError> {
-        let temp_path = self.download_to_temp(url).await?;
-
-        info!(path = %temp_path.display(), "Extracting SteamCMD zip archive...");
-        let bytes = tokio::fs::read(&temp_path)
-            .await
-            .map_err(SteamCmdError::Io)?;
-        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
-            SteamCmdError::Extract(io::Error::new(io::ErrorKind::Other, e.to_string()))
-        })?;
-
-        archive.extract(&self.steamcmd_dir).map_err(|e| {
-            SteamCmdError::Extract(io::Error::new(io::ErrorKind::Other, e.to_string()))
-        })?;
-
-        // Clean up temp file
-        let _ = tokio::fs::remove_file(&temp_path).await;
-        let _ = tokio::fs::remove_dir(&self.steamcmd_dir.join("temp")).await;
-
-        if self.is_installed() {
-            info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
-            Ok(())
-        } else {
-            error!("SteamCMD installation failed: binary not found after extraction");
-            Err(SteamCmdError::Extract(io::Error::new(
-                io::ErrorKind::NotFound,
-                "binary not found after extraction",
-            )))
-        }
     }
 
     /// Runs steamcmd with the given arguments and waits for it to complete.
@@ -491,6 +434,7 @@ impl SteamCmd {
 
         Ok(())
     }
+
     /// Builds the command-line arguments for an `app_update` call without
     /// executing it. Useful for testing and preview.
     #[must_use]

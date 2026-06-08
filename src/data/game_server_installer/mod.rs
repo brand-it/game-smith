@@ -7,6 +7,17 @@ use tracing::{info, warn};
 use crate::data::command_runner::CommandRunner;
 use crate::models::game_servers;
 
+// Platform-specific modules
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::{find_server_executable, prepare_boot_command, terminate_processes};
+
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::{find_server_executable, prepare_boot_command, terminate_processes};
+
 /// Errors that can occur during game server installation.
 #[derive(Debug)]
 pub enum GameServerError {
@@ -153,6 +164,7 @@ impl GameServerInstaller {
             steam_password,
         )
     }
+
     /// Load and decrypt Steam credentials from the database.
     ///
     /// Returns `(Some(username), Some(password))` if configured and decryption succeeds.
@@ -355,37 +367,14 @@ impl GameServerInstaller {
     ) -> Result<Option<crate::data::command_runner::CommandRun>, GameServerError> {
         let runner = CommandRunner::new(&self.ctx);
 
-        let (command, args, working_dir, title) = if let Some(ref script) = server.boot_script {
-            #[cfg(target_os = "windows")]
-            let (command, args) = {
-                let bat_path = Self::write_boot_script_batch(&server.install_dir, script)
-                    .map_err(GameServerError::WriteBootScript)?;
-                (
-                    "cmd.exe".to_string(),
-                    vec!["/C".to_string(), bat_path.to_string_lossy().to_string()],
-                )
-            };
-
-            #[cfg(not(target_os = "windows"))]
-            let (command, args) = Self::boot_script_command(script);
-            (
-                command,
-                args,
-                Some(server.install_dir.clone()),
-                Some(format!("Start {}", server.name)),
-            )
+        let (command, args) = if let Some(ref script) = server.boot_script {
+            prepare_boot_command(&server.install_dir, script)
+                .map_err(GameServerError::WriteBootScript)?
         } else {
             // Default: try to find a server executable
             let install_dir = PathBuf::from(&server.install_dir);
-            let candidates = Self::find_server_executable(&install_dir);
-
-            if let Some(exe) = candidates {
-                (
-                    exe.to_string_lossy().to_string(),
-                    vec![],
-                    Some(server.install_dir.clone()),
-                    Some(format!("Start {}", server.name)),
-                )
+            if let Some(exe) = find_server_executable(&install_dir) {
+                (exe.to_string_lossy().to_string(), vec![])
             } else {
                 warn!(
                     server_id = server.id,
@@ -400,65 +389,15 @@ impl GameServerInstaller {
             .execute(
                 command,
                 args,
-                working_dir,
+                Some(server.install_dir.clone()),
                 None,
-                title,
+                Some(format!("Start {}", server.name)),
                 Some(i64::from(server.id)),
             )
             .await
             .map_err(GameServerError::Execute)?;
 
         Ok(Some(run))
-    }
-
-    /// Attempt to find a server executable in the install directory.
-    ///
-    /// Checks common server binary names for popular game servers.
-    #[must_use]
-    pub fn find_server_executable(install_dir: &std::path::Path) -> Option<PathBuf> {
-        // Linux: executables identified by permissions, not extension
-        #[cfg(target_os = "linux")]
-        let primary_candidates = [
-            "srcds_run",
-            "srcds",
-            "hl_linux",
-            "hlds_run",
-            "server",
-            "game-server",
-        ];
-        // Windows: check .exe variants, including Windows-specific names
-        #[cfg(target_os = "windows")]
-        let primary_candidates = [
-            "srcds.exe",
-            "srcds_run.exe",
-            "hl.exe",
-            "hlds.exe",
-            "hlds_run.exe",
-            "server.exe",
-        ];
-
-        for candidate in &primary_candidates {
-            let path = install_dir.join(candidate);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        // Fallback: check remaining variants (e.g. .exe on Linux for cross-platform installs)
-        let fallback = [
-            "srcds_run.exe",
-            "srcds.exe",
-            "server.exe",
-            "game-server.exe",
-        ];
-        for candidate in &fallback {
-            let path = install_dir.join(candidate);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        None
     }
 
     /// Stop a running game server by terminating its command run processes.
@@ -479,56 +418,7 @@ impl GameServerInstaller {
         let runs =
             crate::models::command_runs::Model::find_by_server(&self.ctx, i64::from(server.id))
                 .await?;
-        for run in runs {
-            if let Some(pid) = run.pid {
-                if !crate::models::process::check_pid_alive(pid) {
-                    continue;
-                }
-                // Fire SIGTERM at the entire process group and return immediately.
-                // We don't wait for the process to exit — on next boot the PID
-                // liveness task will reconcile DB state with ground truth.
-                #[cfg(target_os = "linux")]
-                {
-                    let ret = crate::models::process::kill_process_group(
-                        pid,
-                        crate::models::process::TERM_SIGNAL,
-                    );
-                    if ret == 0 {
-                        info!(
-                            server_id = server.id,
-                            run_id = run.id,
-                            pgid = pid,
-                            "Sent SIGTERM to process group"
-                        );
-                    } else {
-                        warn!(
-                            server_id = server.id,
-                            run_id = run.id,
-                            pgid = pid,
-                            error = ?std::io::Error::last_os_error(),
-                            "Failed to signal process group; falling back to single PID"
-                        );
-                        let _ = crate::models::process::kill_pid(
-                            pid,
-                            crate::models::process::TERM_SIGNAL,
-                        );
-                    }
-                }
-
-                #[cfg(target_os = "windows")]
-                {
-                    let _ =
-                        crate::models::process::kill_pid(pid, crate::models::process::TERM_SIGNAL);
-                    info!(
-                        server_id = server.id,
-                        run_id = run.id,
-                        pid = pid,
-                        "Sent termination signal to process"
-                    );
-                }
-            }
-        }
-
+        terminate_processes(&runs, server.id);
         Ok(())
     }
 
@@ -552,36 +442,6 @@ impl GameServerInstaller {
 
         info!(server_id = server.id, "Game server record deleted");
         Ok(())
-    }
-
-    /// Writes the boot script to a `.bat` file and returns the path.
-    ///
-    /// On Windows, passing multiline or quoted scripts inline to `cmd.exe /C`
-    /// is fragile. Writing to a file first avoids quoting issues.
-    #[cfg(target_os = "windows")]
-    fn write_boot_script_batch(install_dir: &str, script: &str) -> Result<PathBuf, std::io::Error> {
-        let bat_path = PathBuf::from(install_dir).join("game-smith-start.bat");
-        let content = format!("@echo off\r\n{script}");
-        std::fs::write(&bat_path, content)?;
-        Ok(bat_path)
-    }
-    /// Returns the shell command and arguments for executing a boot script.
-    ///
-    /// On Windows, uses `cmd.exe /C <script>`.
-    /// On other platforms, uses `/bin/sh -c <script>`.
-    #[must_use]
-    fn boot_script_command(script: &str) -> (String, Vec<String>) {
-        #[cfg(target_os = "windows")]
-        return (
-            "cmd.exe".to_string(),
-            vec!["/C".to_string(), script.to_string()],
-        );
-
-        #[cfg(not(target_os = "windows"))]
-        (
-            "/bin/sh".to_string(),
-            vec!["-c".to_string(), script.to_string()],
-        )
     }
 }
 
@@ -747,36 +607,5 @@ mod tests {
 
         assert!(script.contains("login anonymous"));
         assert!(script.contains("@NoPromptForPassword 1"));
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn test_write_boot_script_batch() {
-        let dir = std::env::temp_dir().join(format!("game-smith-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("failed to create temp dir");
-        let dir_str = dir.to_string_lossy().to_string();
-
-        let script = "start /B server.exe -port 27015\r\necho done";
-        let bat_path = GameServerInstaller::write_boot_script_batch(&dir_str, script)
-            .expect("failed to write batch file");
-
-        assert!(bat_path.exists(), "batch file was not created");
-        assert_eq!(bat_path.file_name().unwrap(), "game-smith-start.bat");
-
-        let content = std::fs::read_to_string(&bat_path).expect("failed to read batch file");
-        assert!(content.starts_with("@echo off\r\n"));
-        assert!(content.contains("start /B server.exe -port 27015"));
-        assert!(content.contains("echo done"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn test_boot_script_command_unix() {
-        let (cmd, args) = GameServerInstaller::boot_script_command("./srcds_run -game csgo");
-        assert_eq!(cmd, "/bin/sh");
-        assert_eq!(args, ["-c", "./srcds_run -game csgo"]);
     }
 }
