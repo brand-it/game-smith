@@ -43,24 +43,23 @@ impl<'a> GameServerView<'a> {
 #[allow(clippy::unused_async)]
 pub async fn list(
     _ctx: &AppContext,
-    v: impl ViewRenderer,
+    v: &(impl ViewRenderer + Sync),
     servers: &[GameServerModel],
 ) -> Result<impl IntoResponse> {
     let mut views = Vec::with_capacity(servers.len());
     for server in servers {
         views.push(GameServerView::new(server));
     }
-    format::render().view(&v, "game_servers/list.html", data!({ "servers": views }))
+    format::render().view(v, "game_servers/list.html", data!({ "servers": views }))
 }
 
 /// Render the new game server install form.
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
-pub fn new_form(v: impl ViewRenderer, steam_username: Option<&str>) -> Result<impl IntoResponse> {
+pub fn new_form(v: &impl ViewRenderer, steam_username: Option<&str>) -> Result<impl IntoResponse> {
     format::render().view(
-        &v,
+        v,
         "game_servers/new.html",
         data!({ "steam_username": steam_username }),
     )
@@ -72,7 +71,7 @@ pub fn new_form(v: impl ViewRenderer, steam_username: Option<&str>) -> Result<im
 /// Returns an error if template rendering fails.
 pub async fn show(
     ctx: &AppContext,
-    v: impl ViewRenderer,
+    v: &(impl ViewRenderer + Sync),
     server: &GameServerModel,
 ) -> Result<impl IntoResponse> {
     let view = GameServerView::new(server);
@@ -101,7 +100,7 @@ pub async fn show(
     };
 
     format::render().view(
-        &v,
+        v,
         "game_servers/show.html",
         data!({
             "server": view,

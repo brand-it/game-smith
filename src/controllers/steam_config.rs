@@ -36,7 +36,7 @@ pub async fn show_config(
         .flatten()
         .map(|record| record.username);
 
-    crate::views::steam_config::config(&ctx, v, username.as_deref(), None, None)
+    crate::views::steam_config::config(&ctx, &v, username.as_deref(), None, None)
 }
 
 /// POST /steam-config — save or update Steam credentials.
@@ -65,7 +65,7 @@ pub async fn save_config(
     if username.is_empty() {
         return crate::views::steam_config::config(
             &ctx,
-            v,
+            &v,
             existing_username.as_deref(),
             Some("Steam username cannot be empty"),
             None,
@@ -74,7 +74,7 @@ pub async fn save_config(
     if password.is_empty() {
         return crate::views::steam_config::config(
             &ctx,
-            v,
+            &v,
             existing_username.as_deref(),
             Some("Steam password cannot be empty"),
             None,
@@ -99,7 +99,7 @@ pub async fn save_config(
         .await
         .map_err(|e| loco_rs::Error::string(&format!("failed to save steam credentials: {e}")))?;
 
-    crate::views::steam_config::config(&ctx, v, Some(&username), None, None)
+    crate::views::steam_config::config(&ctx, &v, Some(&username), None, None)
 }
 
 /// POST /steam-config/clear — delete stored Steam credentials.
@@ -126,7 +126,7 @@ pub async fn clear_creds(
         })?;
     }
 
-    crate::views::steam_config::config(&ctx, v, None, None, Some("Steam credentials cleared"))
+    crate::views::steam_config::config(&ctx, &v, None, None, Some("Steam credentials cleared"))
 }
 
 /// Register the steam config routes.

@@ -7,9 +7,8 @@ use loco_rs::prelude::*;
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
 pub fn status(
-    v: impl ViewRenderer,
+    v: &impl ViewRenderer,
     binary_path: &str,
     installed: bool,
     health_status: &str,
@@ -17,7 +16,7 @@ pub fn status(
     last_check_status: Option<&str>,
 ) -> Result<impl IntoResponse> {
     format::render().view(
-        &v,
+        v,
         "steamcmd/status.html",
         data!({
             "binary_path": binary_path,

@@ -14,7 +14,7 @@ pub async fn list(
     ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let runs = CommandRunModel::list_recent(&ctx, 100).await?;
-    crate::views::commands::list(v, &runs)
+    crate::views::commands::list(&v, &runs)
 }
 
 /// GET /commands/:id — show a single command run with live log tailing.
@@ -32,7 +32,7 @@ pub async fn show(
         .ok_or_else(|| loco_rs::Error::string("Command run not found"))?;
     let runner = CommandRunner::new(&ctx);
     let log_content = runner.tail(id, None).await.unwrap_or_default();
-    crate::views::commands::show(v, &run, &log_content)
+    crate::views::commands::show(&v, &run, &log_content)
 }
 
 /// Register the commands routes.

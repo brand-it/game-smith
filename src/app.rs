@@ -140,7 +140,6 @@ impl Hooks for App {
         Ok(())
     }
 
-    #[allow(unused_variables)]
     fn register_tasks(tasks: &mut Tasks) {
         tasks.register(tasks::pid_liveness::PidLiveness);
         // tasks-inject (do not remove)

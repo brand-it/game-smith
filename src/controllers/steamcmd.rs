@@ -40,7 +40,7 @@ pub async fn check_status(
     let last_check_status = last_check.as_ref().map(|r| r.status.clone());
 
     crate::views::steamcmd::status(
-        v,
+        &v,
         &binary_path,
         installed,
         health_str,

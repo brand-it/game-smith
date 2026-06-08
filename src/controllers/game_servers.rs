@@ -42,7 +42,7 @@ pub async fn list(
     let servers = game_servers::Model::list(&ctx).await.map_err(|e| {
         StandardError::InternalServerError(format!("failed to list game servers: {e}"))
     })?;
-    Ok(crate::views::game_servers::list(&ctx, v, &servers).await?)
+    Ok(crate::views::game_servers::list(&ctx, &v, &servers).await?)
 }
 
 /// GET /servers/new — show the install form.
@@ -59,7 +59,7 @@ pub async fn new_form(
         .flatten()
         .map(|record| record.username);
     Ok(crate::views::game_servers::new_form(
-        v,
+        &v,
         username.as_deref(),
     )?)
 }
@@ -180,7 +180,7 @@ pub async fn show(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
-    Ok(crate::views::game_servers::show(&ctx, v, &server).await?)
+    Ok(crate::views::game_servers::show(&ctx, &v, &server).await?)
 }
 
 /// POST /servers/:id/start — start a game server.
