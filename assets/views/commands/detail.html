@@ -14,7 +14,7 @@
 </div>
 
 <!-- Metadata -->
-<dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+<dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
     <div class="rounded-lg bg-white p-4 shadow-sm border border-gray-200">
         <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-title-field", lang="en-US") }}</dt>
         <dd class="mt-1 text-sm text-gray-900">{{ run.title|default(value=t(key="commands-placeholder", lang="en-US")) }}</dd>
@@ -68,13 +68,13 @@
 </dl>
 
 <!-- Arguments -->
-<div class="mt-6 rounded-lg bg-white p-4 shadow-sm border border-gray-200">
+<div class="mt-3 rounded-lg bg-white p-4 shadow-sm border border-gray-200">
     <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t(key="commands-detail-arguments", lang="en-US") }}</dt>
     <dd class="mt-2"><code class="rounded bg-gray-100 px-2 py-1 font-mono text-sm text-gray-800">{{ run.args }}</code></dd>
 </div>
 
 <!-- Log output -->
-<h2 class="mt-8 text-lg font-semibold text-gray-900">{{ t(key="commands-detail-log-output", lang="en-US") }}</h2>
+<h2 class="mt-4 text-lg font-semibold text-gray-900">{{ t(key="commands-detail-log-output", lang="en-US") }}</h2>
 
 {% if run.is_running %}
 <div id="live-indicator" class="mt-2 flex items-center gap-2">
@@ -112,7 +112,7 @@
 </p>
 {% endif %}
 
-<pre id="log-output" class="mt-4 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300">{{ log_content }}</pre>
+<pre id="log-output" class="mt-2 overflow-auto rounded-lg bg-gray-900 p-4 font-mono text-sm leading-relaxed text-gray-300 opacity-0">{{ log_content }}</pre>
 {% endblock %}
 
 {% block extra_scripts %}

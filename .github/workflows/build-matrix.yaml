@@ -18,13 +18,14 @@ jobs:
         include:
           - os: ubuntu-latest
             install-cmd: "sudo apt-get update && sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb"
-            test-cmd: xvfb-run cargo test --all-features --all
+            test-cmd: xvfb-run cargo nextest run --retries 3
             artifact-name: game-smith-ubuntu
           - os: windows-latest
             install-cmd: ""
-            test-cmd: cargo test --all-features --all
+            test-cmd: cargo nextest run --retries 3
             artifact-name: game-smith-windows
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -58,6 +59,9 @@ jobs:
       - name: Install system dependencies
         if: matrix.install-cmd != ''
         run: ${{ matrix.install-cmd }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
 
       - name: Run tests
         run: ${{ matrix.test-cmd }}

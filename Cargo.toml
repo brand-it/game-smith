@@ -2,7 +2,7 @@
 
 [package]
 name = "game-smith"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 publish = false
 default-run = "game-smith"
@@ -61,7 +61,7 @@ zip = { version = "2" }
 chacha20poly1305 = { version = "0.10", features = ["std"] }
 getrandom = { version = "0.2" }
 rand_core = { version = "0.6", features = ["getrandom"] }
-
+data-encoding = { version = "2" }
 # autostart on boot
 auto-launch = { version = "0.6" }
 # desktop integration (Linux: GTK, Windows: Win32)

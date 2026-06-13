@@ -94,11 +94,12 @@ pub async fn show(
         .unwrap_or_default();
 
     let ctx_clone = ctx.clone();
+    let spawn_servers = all_servers.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await; // Brief delay to allow the initial page response to be sent before we start killing processes. makes thing look fancy
 
         // Send SIGTERM to every alive server.
-        for server in &all_servers {
+        for server in &spawn_servers {
             let alive = crate::models::game_servers::is_alive(&ctx_clone, server).await;
             if !alive {
                 continue;
@@ -110,7 +111,7 @@ pub async fn show(
         // Wait until all processes are actually dead (max 30s).
         for _ in 0..60 {
             let mut still_alive = false;
-            for s in &all_servers {
+            for s in &spawn_servers {
                 if crate::models::game_servers::is_alive(&ctx_clone, s).await {
                     still_alive = true;
                     break;
@@ -128,7 +129,7 @@ pub async fn show(
         std::process::exit(0);
     });
 
-    crate::views::shutdown::show(&v)
+    crate::views::shutdown::show(&v, &all_servers)
 }
 
 /// GET /shutdown/status — JSON API returning current shutdown progress.

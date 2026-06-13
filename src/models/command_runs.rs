@@ -2,11 +2,27 @@ use super::_entities::command_runs::Column;
 pub use super::_entities::command_runs::{ActiveModel, Entity, Model};
 use loco_rs::app::AppContext;
 use loco_rs::model::ModelError;
+use loco_rs::validation::Validatable;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, ActiveValue, QueryOrder, QuerySelect};
-use std::collections::HashMap;
-pub type CommandRuns = Entity;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use validator::Validate;
+
+/// Validation rules for [`ActiveModel`].
+#[derive(Debug, Validate)]
+pub struct CommandRunsValidator {
+    #[validate(length(min = 1, message = "Command must not be empty."))]
+    pub command: String,
+}
+
+impl Validatable for ActiveModel {
+    fn validator(&self) -> Box<dyn Validate> {
+        Box::new(CommandRunsValidator {
+            command: self.command.as_ref().clone(),
+        })
+    }
+}
 
 /// Command run view wrapper that adds computed `is_running` for templates.
 ///
@@ -93,6 +109,7 @@ impl ActiveModelBehavior for ActiveModel {
     where
         C: ConnectionTrait,
     {
+        self.validate()?;
         if !insert && self.updated_at.is_unchanged() {
             let mut this = self;
             this.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());

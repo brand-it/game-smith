@@ -6,3 +6,8 @@ jobs:
     output: silent
     run_on_start: true
     tags: ["maintenance"]
+  log_cleanup:
+    run: "log_cleanup"
+    schedule: "every 1 hours"
+    output: silent
+    tags: ["maintenance"]

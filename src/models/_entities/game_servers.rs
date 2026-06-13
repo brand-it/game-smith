@@ -11,7 +11,9 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub app_id: i32,
+    #[sea_orm(unique)]
     pub name: String,
+    #[sea_orm(unique)]
     pub install_dir: String,
     pub platform: String,
     pub status: String,
@@ -27,7 +29,23 @@ pub struct Model {
     pub server_mod: Option<String>,
     pub beta_branch: Option<String>,
     pub use_steam_login: bool,
+    pub template_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::game_templates::Entity",
+        from = "Column::TemplateId",
+        to = "super::game_templates::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    GameTemplates,
+}
+
+impl Related<super::game_templates::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::GameTemplates.def()
+    }
+}

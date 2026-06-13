@@ -6,23 +6,21 @@ use crate::models::command_runs::Model as CommandRunModel;
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
-pub fn list(v: impl ViewRenderer, runs: &[CommandRunModel]) -> Result<impl IntoResponse> {
-    format::render().view(&v, "commands/list.html", data!({ "runs": runs }))
+pub fn list(v: &impl ViewRenderer, runs: &[CommandRunModel]) -> Result<impl IntoResponse> {
+    format::render().view(v, "commands/list.html", data!({ "runs": runs }))
 }
 
 /// Render a single command run detail page with live log tailing.
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
 pub fn show(
-    v: impl ViewRenderer,
+    v: &impl ViewRenderer,
     run: &CommandRunModel,
     log_content: &str,
 ) -> Result<impl IntoResponse> {
     format::render().view(
-        &v,
+        v,
         "commands/detail.html",
         data!({ "run": run, "log_content": log_content }),
     )

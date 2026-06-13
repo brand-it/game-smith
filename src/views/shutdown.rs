@@ -4,16 +4,44 @@
 //! with a live-updating polling client.
 
 use crate::initializers::embedded_i18n::EmbeddedViews;
+use crate::models::game_servers::Model as GameServerModel;
 use loco_rs::prelude::*;
+use serde::Serialize;
+
+/// Minimal server view for shutdown template rendering.
+#[derive(Debug, Serialize)]
+pub struct ShutdownServerView<'a> {
+    pub id: i32,
+    pub name: &'a str,
+}
+
+impl<'a> ShutdownServerView<'a> {
+    #[must_use]
+    pub fn new(server: &'a GameServerModel) -> Self {
+        Self {
+            id: server.id,
+            name: &server.name,
+        }
+    }
+}
 
 /// Render the shutdown status page.
 ///
 /// The initial server list is passed to the template so it can render
-/// placeholders immediately. The JS on the page polls `/shutdown/status`
-/// for live updates.
+/// server cards immediately. The JS on the page polls `/shutdown/status`
+/// for live status updates.
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-pub fn show(v: &EmbeddedViews) -> Result<impl axum::response::IntoResponse> {
-    format::render().view(v, "game_servers/shutdown.html", data!({}))
+pub fn show(
+    v: &EmbeddedViews,
+    servers: &[GameServerModel],
+) -> Result<impl axum::response::IntoResponse> {
+    let server_views: Vec<ShutdownServerView<'_>> =
+        servers.iter().map(ShutdownServerView::new).collect();
+    format::render().view(
+        v,
+        "game_servers/shutdown.html",
+        data!({ "servers": &server_views }),
+    )
 }

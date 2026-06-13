@@ -3,74 +3,26 @@
 {% block title %}{{ t(key="servers-new-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
+<div class="mb-3">
     <a href="/servers" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
     <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="servers-new-title", lang="en-US") }}</h1>
 </div>
 
-<div class="bg-white border border-gray-200 rounded-lg p-8 max-w-[560px]">
-    <form action="/servers" method="post" id="server_form">
-        <div class="mb-5">
-            <label for="app_id" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-app-id", lang="en-US") }}</label>
-            <input type="text" name="app_id" id="app_id" required placeholder="730"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-            <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="servers-form-app-id-help", lang="en-US") }}</p>
-            <p class="mt-0.5 mb-0 text-xs text-slate-500">
-                {{ t(key="servers-form-app-id-link-text", lang="en-US") }}
-                <a href="https://steamdb.info/apps/" target="_blank" rel="noopener" class="text-blue-600 no-underline hover:underline">steamdb.info/apps</a>
-            </p>
-        </div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[960px]">
+    <!-- Create New Server Card -->
+    <a href="/servers/new/form"
+        class="block bg-white border border-gray-200 rounded-lg p-4 transition-colors hover:border-blue-300 no-underline">
+        <h2 class="text-lg font-semibold text-slate-900 mb-2">{{ t(key="servers-create-new-server", lang="en-US") }}</h2>
+        <p class="text-sm text-slate-500 m-0">{{ t(key="servers-create-new-server-desc", lang="en-US") }}</p>
+    </a>
 
-        <div class="mb-5">
-            <label for="name" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-name", lang="en-US") }}</label>
-            <input type="text" name="name" id="name" required placeholder="{{ t(key="servers-form-name-placeholder", lang="en-US") }}"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-        </div>
-
-        <div class="mb-5">
-            <label for="server_mod" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-mod", lang="en-US") }}</label>
-            <input type="text" name="server_mod" id="server_mod" placeholder="{{ t(key="servers-form-mod-placeholder", lang="en-US") }}"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-            <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="servers-form-mod-help", lang="en-US") }}</p>
-        </div>
-
-        <div class="mb-7">
-            <label for="beta_branch" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-beta", lang="en-US") }}</label>
-            <input type="text" name="beta_branch" id="beta_branch" placeholder="{{ t(key="servers-form-beta-placeholder", lang="en-US") }}"
-                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-        </div>
-
-        <div class="mb-5 p-4 bg-slate-50 rounded-lg border border-gray-200">
-            <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
-                    onchange="document.getElementById('steam_creds').classList.toggle('hidden', !this.checked)"
-                    class="w-4 h-4 accent-blue-600">
-                <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-use-steam-account", lang="en-US") }}</span>
-            </label>
-            <p class="mt-1.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-use-steam-account-help", lang="en-US") }}</p>
-        </div>
-
-        <div id="steam_creds" class="hidden mb-5 p-4 bg-sky-50 rounded-lg border border-sky-200">
-            <div class="mb-3">
-                <label for="steam_username" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-steam-username", lang="en-US") }}</label>
-                <input type="text" name="steam_username" id="steam_username" placeholder="{{ t(key="servers-form-steam-username-placeholder", lang="en-US") }}"
-                    value="{{ steam_username | default(value="") }}"
-                    class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-            </div>
-            <div>
-                <label for="steam_password" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-steam-password", lang="en-US") }}</label>
-                <input type="password" name="steam_password" id="steam_password" placeholder="{{ t(key="servers-form-steam-password-placeholder", lang="en-US") }}"
-                    class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-            </div>
-        </div>
-
-        <div class="flex items-center gap-3">
-            <button type="submit"
-                class="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700">
-                {{ t(key="servers-form-install", lang="en-US") }}
-            </button>
-            <a href="/servers" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">Cancel</a>
-        </div>
-    </form>
+    {% if has_templates %}
+    <!-- Create from Template Card -->
+    <a href="/servers/new/select-template"
+        class="block bg-white border border-gray-200 rounded-lg p-4 transition-colors hover:border-blue-300 no-underline">
+        <h2 class="text-lg font-semibold text-slate-900 mb-2">{{ t(key="servers-create-from-template", lang="en-US") }}</h2>
+        <p class="text-sm text-slate-500 m-0">{{ t(key="servers-create-from-template-desc", lang="en-US") }}</p>
+    </a>
+    {% endif %}
 </div>
 {% endblock %}

@@ -36,10 +36,8 @@ fn check_pid_alive_impl(pid: i64) -> bool {
     let alive = success && exit_code == STILL_ACTIVE;
 
     // Always close the handle to avoid leaks.
-    // Always close the handle to avoid leaks. CloseHandle panics if the
-    // Win32 call fails, which is the desired behavior (handle leak is a bug).
-    unsafe { CloseHandle(handle) };
-
+    // Closing the handle after use is critical; failure indicates a bug.
+    unsafe { CloseHandle(handle).expect("failed to close process handle") };
     alive
 }
 
@@ -60,7 +58,7 @@ pub fn kill_pid(pid: i64, _signal: i32) -> bool {
     let result = unsafe { TerminateProcess(handle, 1) }.is_ok();
 
     // Always close the handle to avoid leaks.
-    unsafe { CloseHandle(handle) };
+    unsafe { CloseHandle(handle).expect("failed to close process handle") };
 
     result
 }

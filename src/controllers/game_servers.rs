@@ -1,35 +1,20 @@
 use crate::controllers::error::StandardError;
 use crate::initializers::embedded_i18n::EmbeddedViews;
 use axum::extract::Form;
+use axum::extract::Query;
 use axum::response::Redirect;
 use axum::routing::{get, post};
+use loco_rs::model::ModelError;
 use loco_rs::prelude::*;
 use serde::Deserialize;
 
 use crate::data::encryption::EncryptionKey;
 use crate::data::game_server_installer::GameServerInstaller;
 use crate::models::game_servers;
+use crate::models::game_servers::CreateServerForm;
 use crate::models::game_servers::ServerStatus;
 use crate::models::steam_credentials;
 use crate::{resolve_data_home, AppDirs};
-
-/// Default value for optional `use_steam_login` checkbox.
-const fn default_false() -> bool {
-    false
-}
-
-/// Form data for creating a new game server.
-#[derive(Debug, Deserialize)]
-pub struct CreateServerForm {
-    pub app_id: String,
-    pub name: String,
-    pub server_mod: Option<String>,
-    pub beta_branch: Option<String>,
-    #[serde(default = "default_false")]
-    pub use_steam_login: bool,
-    pub steam_username: Option<String>,
-    pub steam_password: Option<String>,
-}
 
 /// GET /servers — list all game servers.
 ///
@@ -42,7 +27,7 @@ pub async fn list(
     let servers = game_servers::Model::list(&ctx).await.map_err(|e| {
         StandardError::InternalServerError(format!("failed to list game servers: {e}"))
     })?;
-    Ok(crate::views::game_servers::list(&ctx, v, &servers).await?)
+    Ok(crate::views::game_servers::list(&ctx, &v, &servers).await?)
 }
 
 /// GET /servers/new — show the install form.
@@ -58,24 +43,82 @@ pub async fn new_form(
         .ok()
         .flatten()
         .map(|record| record.username);
+    let templates = crate::models::game_templates::Model::list(&ctx)
+        .await
+        .unwrap_or_default();
     Ok(crate::views::game_servers::new_form(
-        v,
+        &v,
         username.as_deref(),
+        &templates,
     )?)
 }
+
+/// GET /servers/new/form — show the install form, optionally pre-filled from a template.
+///
+/// If a `template_id` query parameter is provided and the template exists,
+/// the form fields are pre-filled from the template data.
+///
+/// # Errors
+/// Returns a [`StandardError`] if rendering fails.
+pub async fn new_form_with_template(
+    Query(params): Query<NewServerFormQuery>,
+    State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
+) -> Result<impl IntoResponse, StandardError> {
+    let username = steam_credentials::Model::find(&ctx)
+        .await
+        .ok()
+        .flatten()
+        .map(|record| record.username);
+    let template = if let Some(id) = params.template_id {
+        Some(
+            crate::models::game_templates::Model::find_by_id(&ctx, id)
+                .await
+                .map_err(|e| StandardError::InternalServerError(e.to_string()))?
+                .ok_or_else(|| StandardError::NotFound("Template not found".into()))?,
+        )
+    } else {
+        None
+    };
+    Ok(crate::views::game_servers::new_form_with_template(
+        &v,
+        username.as_deref(),
+        template.as_ref(),
+        None,
+        None,
+    )?)
+}
+
+/// GET /servers/new/select-template — show a card-based template browser.
+///
+/// # Errors
+/// Returns a [`StandardError`] if the database query fails or rendering fails.
+pub async fn select_template(
+    State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
+) -> Result<impl IntoResponse, StandardError> {
+    let templates = crate::models::game_templates::Model::list(&ctx)
+        .await
+        .unwrap_or_default();
+    Ok(crate::views::game_servers::select_template(&v, &templates)?)
+}
+
 /// POST /servers — create a new game server and start installation.
 ///
 /// Creates the game server record, kicks off the `SteamCMD` installation,
-/// and redirects to the command detail page where progress is streamed.
+/// and redirects to the game server show page where installation progress is displayed.
 ///
 /// # Errors
 /// Returns a [`StandardError`] if validation fails, the record cannot be
 /// created, or the installation cannot be started.
+#[debug_handler]
+#[allow(clippy::too_many_lines)]
 pub async fn create(
     State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
     Form(form): Form<CreateServerForm>,
 ) -> Result<impl IntoResponse, StandardError> {
-    // Validate app_id
+    // Validate app_id (needed for error messages)
     let app_id: u32 = form
         .app_id
         .parse()
@@ -91,30 +134,32 @@ pub async fn create(
         return Err(StandardError::BadRequest("Name cannot be empty".into()));
     }
 
-    // Detect platform from the current OS
-    let platform = match std::env::consts::OS {
-        "windows" => "windows",
-        "macos" => "macos",
-        _ => "linux",
-    }
-    .to_string();
-
-    // Compute install directory
-    let install_dir = game_servers::default_install_dir(&name);
-
-    // Filter empty strings from optional fields
-    let server_mod = form.server_mod.filter(|s| !s.trim().is_empty());
-    let beta_branch = form.beta_branch.filter(|s| !s.trim().is_empty());
+    // Load template if provided
+    let template = if let Some(id) = form.template_id {
+        match crate::models::game_templates::Model::find_by_id(&ctx, id).await {
+            Ok(Some(t)) => Some(t),
+            Ok(None) => {
+                tracing::warn!(template_id = id, "Template not found, ignoring");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to load template, ignoring");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Save Steam credentials if provided
-    let use_steam_login = form.use_steam_login;
     let steam_username = form
         .steam_username
+        .clone()
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string());
-    let steam_password = form.steam_password.filter(|s| !s.trim().is_empty());
+    let steam_password = form.steam_password.clone().filter(|s| !s.trim().is_empty());
 
-    if use_steam_login {
+    if form.use_steam_login {
         if let (Some(ref username), Some(ref password)) = (steam_username, steam_password) {
             if !username.is_empty() && !password.is_empty() {
                 match save_steam_credentials(&ctx, username, password).await {
@@ -127,25 +172,57 @@ pub async fn create(
         }
     }
 
-    // Create game server record
-    let server = game_servers::ActiveModel::create(
-        &ctx,
-        app_id,
-        name,
-        install_dir,
-        platform,
-        server_mod,
-        beta_branch,
-        use_steam_login,
-    )
-    .await
-    .map_err(|e| {
-        StandardError::InternalServerError(format!("failed to create game server: {e}"))
-    })?;
+    // Create game server record — model handles all data extraction and template merging
+    let server = match game_servers::ActiveModel::create(&ctx, &form, template.as_ref()).await {
+        Ok(server) => server,
+        Err(ModelError::EntityAlreadyExists) => {
+            let username = steam_credentials::Model::find(&ctx)
+                .await
+                .ok()
+                .flatten()
+                .map(|record| record.username);
+            let form_data_model = game_servers::Model {
+                id: 0,
+                created_at: chrono::Utc::now().into(),
+                updated_at: chrono::Utc::now().into(),
+                app_id: app_id
+                    .try_into()
+                    .map_err(|_| StandardError::BadRequest("App ID out of range".into()))?,
+                name: form.name.clone(),
+                install_dir: game_servers::default_install_dir(&form.name),
+                platform: String::new(),
+                status: String::new(),
+                boot_script: None,
+                auto_start: false,
+                auto_restart: false,
+                auto_update: false,
+                update_on_start: false,
+                restart_schedule: None,
+                last_error: None,
+                server_mod: form.server_mod.clone(),
+                beta_branch: form.beta_branch.clone(),
+                use_steam_login: form.use_steam_login,
+                template_id: form.template_id,
+            };
+            return Ok(crate::views::game_servers::new_form_with_template(
+                &v,
+                username.as_deref(),
+                None,
+                Some("A game server with this name or install directory already exists."),
+                Some(&form_data_model),
+            )?
+            .into_response());
+        }
+        Err(other) => {
+            return Err(StandardError::InternalServerError(format!(
+                "failed to create game server: {other}"
+            )));
+        }
+    };
 
     // Start installation
     let installer = GameServerInstaller::new(&ctx);
-    let run = installer.install(&server).await.map_err(|e| {
+    let _run = installer.install(&server).await.map_err(|e| {
         StandardError::InternalServerError(format!("failed to start installation: {e}"))
     })?;
 
@@ -161,8 +238,8 @@ pub async fn create(
         );
     }
 
-    // Redirect to command detail page
-    Ok(Redirect::to(&format!("/commands/{}", run.id)).into_response())
+    // Redirect to server show page
+    Ok(Redirect::to(&format!("/servers/{}", server.id)).into_response())
 }
 
 /// GET /servers/:id — show game server details.
@@ -180,7 +257,7 @@ pub async fn show(
             StandardError::InternalServerError(format!("failed to find game server: {e}"))
         })?
         .ok_or_else(|| StandardError::NotFound("Game server not found".into()))?;
-    Ok(crate::views::game_servers::show(&ctx, v, &server).await?)
+    Ok(crate::views::game_servers::show(&ctx, &v, &server, None).await?)
 }
 
 /// POST /servers/:id/start — start a game server.
@@ -424,6 +501,7 @@ pub async fn update_auto_start(
 pub async fn update_settings(
     Path(id): Path<i32>,
     State(ctx): State<AppContext>,
+    ViewEngine(v): ViewEngine<EmbeddedViews>,
     Form(form): Form<UpdateSettingsForm>,
 ) -> Result<impl IntoResponse, StandardError> {
     let server = game_servers::Model::find_by_id(&ctx, id)
@@ -439,8 +517,8 @@ pub async fn update_settings(
         ));
     }
 
-    let mut active: game_servers::ActiveModel = server.into();
-    active
+    let mut active: game_servers::ActiveModel = server.clone().into();
+    match active
         .update_settings(
             &ctx,
             form.name,
@@ -450,11 +528,21 @@ pub async fn update_settings(
             form.use_steam_login,
         )
         .await
-        .map_err(|e| {
-            StandardError::InternalServerError(format!("failed to update settings: {e}"))
-        })?;
-
-    Ok(Redirect::to(&format!("/servers/{id}")).into_response())
+    {
+        Ok(_) => Ok(Redirect::to(&format!("/servers/{id}")).into_response()),
+        Err(ModelError::EntityAlreadyExists) => crate::views::game_servers::show(
+            &ctx,
+            &v,
+            &server,
+            Some("A game server with this name or install directory already exists."),
+        )
+        .await
+        .map(axum::response::IntoResponse::into_response)
+        .map_err(|e| StandardError::InternalServerError(format!("failed to render: {e}"))),
+        Err(other) => Err(StandardError::InternalServerError(format!(
+            "failed to update settings: {other}"
+        ))),
+    }
 }
 
 /// Form data for updating the boot script.
@@ -470,8 +558,14 @@ pub struct UpdateSettingsForm {
     pub install_dir: String,
     pub server_mod: Option<String>,
     pub beta_branch: Option<String>,
-    #[serde(default = "default_false")]
+    #[serde(default = "crate::models::game_servers::default_false")]
     pub use_steam_login: bool,
+}
+
+/// Query parameters for the new server form page.
+#[derive(Debug, Deserialize)]
+pub struct NewServerFormQuery {
+    pub template_id: Option<i32>,
 }
 
 /// Register the game server routes.
@@ -480,6 +574,8 @@ pub fn routes() -> Routes {
         .prefix("servers")
         .add("/", get(list))
         .add("/new", get(new_form))
+        .add("/new/form", get(new_form_with_template))
+        .add("/new/select-template", get(select_template))
         .add("/", post(create))
         .add("/{id}", get(show))
         .add("/{id}/start", post(start_server))

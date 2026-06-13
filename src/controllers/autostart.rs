@@ -20,7 +20,7 @@ pub async fn settings(
     ViewEngine(v): ViewEngine<EmbeddedViews>,
 ) -> Result<impl IntoResponse> {
     let enabled = autostart::is_enabled().unwrap_or(false);
-    let response = crate::views::autostart::settings(&ctx, v, enabled, None)?;
+    let response = crate::views::autostart::settings(&ctx, &v, enabled, None)?;
     Ok(with_cache_control(response))
 }
 
@@ -50,7 +50,7 @@ pub async fn toggle(
     Ok(match result {
         Ok(()) => with_cache_control(crate::views::autostart::settings(
             &ctx,
-            v,
+            &v,
             now_enabled,
             Some(if now_enabled {
                 "Autostart enabled"
@@ -60,7 +60,7 @@ pub async fn toggle(
         )?),
         Err(e) => with_cache_control(crate::views::autostart::settings(
             &ctx,
-            v,
+            &v,
             now_enabled,
             Some(&format!("Failed to toggle autostart: {e}")),
         )?),

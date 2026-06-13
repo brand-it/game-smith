@@ -61,7 +61,7 @@ watch:
 # ── Quality ────────────────────────────────────────────────────────────
 
 test:
-	cargo test
+	cargo nextest run --retries 3
 
 fmt:
 	cargo fmt --all

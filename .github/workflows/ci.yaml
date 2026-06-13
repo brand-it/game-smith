@@ -65,6 +65,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -99,7 +100,10 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libappindicator3-dev libxdo-dev xdotool xvfb
-      - run: xvfb-run cargo test --all-features --all
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+      - name: Run tests
+        run: xvfb-run cargo nextest run --retries 3
 
   version-check:
     name: Check Version Sync

@@ -11,16 +11,15 @@ use loco_rs::prelude::*;
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
 pub fn config(
     _ctx: &AppContext,
-    v: impl ViewRenderer,
+    v: &impl ViewRenderer,
     username: Option<&str>,
     error: Option<&str>,
     success: Option<&str>,
 ) -> Result<impl IntoResponse> {
     format::render().view(
-        &v,
+        v,
         "steam_config/config.html",
         data!({
             "username": username.unwrap_or(""),

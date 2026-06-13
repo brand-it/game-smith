@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="shutdown-page">
-    <div class="mb-6 flex items-center gap-4">
+    <div class="mb-3 flex items-center gap-4">
         <div class="shutdown-icon" id="shutdown-icon"></div>
         <div>
             <h1 class="text-2xl font-bold text-slate-900 m-0">Shutting Down</h1>
@@ -13,7 +13,7 @@
     </div>
 
     <!-- Progress bar -->
-    <div class="mb-4">
+    <div class="mb-3">
         <div class="progress-track">
             <div class="progress-fill" id="progress-fill"></div>
         </div>
@@ -30,10 +30,20 @@
 
     <!-- Server cards -->
     <div id="server-list" class="space-y-2">
-        <div class="loading-placeholder placeholder">
-            <div class="shutdown-icon loading-icon"></div>
-            Fetching server list&hellip;
+        {% for server in servers %}
+        <div class="server-card" id="server-{{ server.id }}">
+            <div class="server-dot"></div>
+            <div class="server-info">
+                <div class="server-name">{{ server.name }}</div>
+                <div class="server-detail server-error"></div>
+            </div>
+            <span class="status-badge pending">Pending</span>
         </div>
+        {% else %}
+        <div class="loading-placeholder">
+            <div class="server-detail">No servers to stop</div>
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endblock %}

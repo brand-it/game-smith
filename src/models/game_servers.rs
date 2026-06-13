@@ -3,9 +3,69 @@ pub use super::_entities::game_servers::{ActiveModel, Entity, Model};
 use crate::data::game_server_installer::GameServerError;
 use loco_rs::app::AppContext;
 use loco_rs::model::ModelError;
+use loco_rs::validation::Validatable;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, ActiveValue, QueryOrder};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
+/// Default value for optional `use_steam_login` checkbox.
+#[must_use]
+pub const fn default_false() -> bool {
+    false
+}
+
+/// Form data for creating a new game server.
+#[derive(Debug, Deserialize)]
+pub struct CreateServerForm {
+    pub app_id: String,
+    pub name: String,
+    pub server_mod: Option<String>,
+    pub beta_branch: Option<String>,
+    #[serde(default = "default_false")]
+    pub use_steam_login: bool,
+    pub steam_username: Option<String>,
+    pub steam_password: Option<String>,
+    pub template_id: Option<i32>,
+}
+
+/// Validation rules for [`ActiveModel`].
+#[derive(Debug, Validate)]
+pub struct GamesServersValidator {
+    #[validate(length(
+        min = 2,
+        max = 100,
+        message = "Name must be between 2 and 100 characters."
+    ))]
+    pub name: String,
+    #[validate(range(min = 1, message = "App ID must be a positive integer."))]
+    pub app_id: i32,
+    #[validate(length(min = 1, message = "Install directory must not be empty."))]
+    pub install_dir: String,
+    #[validate(custom(
+        function = "validate_platform",
+        message = "Platform must be one of: linux, windows, macos."
+    ))]
+    pub platform: String,
+}
+
+fn validate_platform(value: &str) -> Result<(), validator::ValidationError> {
+    if matches!(value, "linux" | "windows" | "macos") {
+        Ok(())
+    } else {
+        Err(validator::ValidationError::new("invalid"))
+    }
+}
+
+impl Validatable for ActiveModel {
+    fn validator(&self) -> Box<dyn Validate> {
+        Box::new(GamesServersValidator {
+            name: self.name.as_ref().clone(),
+            app_id: *self.app_id.as_ref(),
+            install_dir: self.install_dir.as_ref().clone(),
+            platform: self.platform.as_ref().clone(),
+        })
+    }
+}
 
 /// Possible values for the `game_servers.status` column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +213,7 @@ impl ActiveModelBehavior for ActiveModel {
     where
         C: ConnectionTrait,
     {
+        self.validate()?;
         if !insert && self.updated_at.is_unchanged() {
             let mut this = self;
             this.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
@@ -169,27 +230,80 @@ impl ActiveModel {
     ///
     /// # Arguments
     /// * `ctx` - Application context with database connection.
-    /// * `app_id` - Steam App ID for the game server.
-    /// * `name` - User-defined display name.
-    /// * `install_dir` - Absolute path where the game will be installed.
-    /// * `platform` - Target platform ("linux", "windows", "macos").
-    /// * `server_mod` - Optional mod name for HL1 games.
-    /// * `beta_branch` - Optional beta branch name for `app_update`.
-    /// * `use_steam_login` - When `true`, use Steam credentials; when `false`, use anonymous login.
+    /// * `form` - Form data containing `app_id`, name, and optional settings.
+    /// * `template` - Optional template whose settings are merged into the new server.
     ///
     /// # Errors
     /// Returns a [`ModelError`] if the database operation fails.
-    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         ctx: &AppContext,
-        app_id: u32,
-        name: String,
-        install_dir: String,
-        platform: String,
-        server_mod: Option<String>,
-        beta_branch: Option<String>,
-        use_steam_login: bool,
+        form: &CreateServerForm,
+        template: Option<&super::game_templates::Model>,
     ) -> Result<Model, ModelError> {
+        // Validate app_id
+        let app_id: u32 = form.app_id.parse().map_err(|_| {
+            ModelError::from(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid App ID",
+            )) as Box<dyn std::error::Error + Send + Sync>)
+        })?;
+
+        // Validate name
+        let name = form.name.trim().to_string();
+        if name.is_empty() {
+            return Err(ModelError::from(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Name cannot be empty",
+            ))
+                as Box<dyn std::error::Error + Send + Sync>));
+        }
+
+        // Enforce uniqueness of name and install_dir
+        if Model::find_by_name(ctx, &name).await?.is_some() {
+            return Err(ModelError::EntityAlreadyExists);
+        }
+        let install_dir = default_install_dir(&name);
+        if Model::find_by_install_dir(ctx, &install_dir)
+            .await?
+            .is_some()
+        {
+            return Err(ModelError::EntityAlreadyExists);
+        }
+
+        // Detect platform from the current OS
+        let platform = match std::env::consts::OS {
+            "windows" => "windows",
+            "macos" => "macos",
+            _ => "linux",
+        }
+        .to_string();
+
+        // Filter empty strings from optional fields
+        let server_mod = form.server_mod.clone().filter(|s| !s.trim().is_empty());
+        let beta_branch = form.beta_branch.clone().filter(|s| !s.trim().is_empty());
+        let use_steam_login = form.use_steam_login;
+
+        // Extract template settings or use defaults
+        let (
+            template_id,
+            boot_script,
+            auto_start,
+            auto_restart,
+            auto_update,
+            update_on_start,
+            restart_schedule,
+        ) = template.map_or((None, None, false, false, false, false, None), |t| {
+            (
+                Some(t.id),
+                t.boot_script.clone(),
+                t.auto_start,
+                t.auto_restart,
+                t.auto_update,
+                t.update_on_start,
+                t.restart_schedule.clone(),
+            )
+        });
+
         let now = chrono::Utc::now();
         let record = Self {
             id: ActiveValue::NotSet,
@@ -202,17 +316,19 @@ impl ActiveModel {
             install_dir: ActiveValue::Set(install_dir),
             platform: ActiveValue::Set(platform),
             status: ActiveValue::Set(ServerStatus::Pending.as_str().to_string()),
-            boot_script: ActiveValue::Set(None),
-            auto_start: ActiveValue::Set(false),
-            auto_restart: ActiveValue::Set(false),
-            auto_update: ActiveValue::Set(false),
-            update_on_start: ActiveValue::Set(false),
-            restart_schedule: ActiveValue::Set(None),
+            boot_script: ActiveValue::Set(boot_script),
+            auto_start: ActiveValue::Set(auto_start),
+            auto_restart: ActiveValue::Set(auto_restart),
+            auto_update: ActiveValue::Set(auto_update),
+            update_on_start: ActiveValue::Set(update_on_start),
+            restart_schedule: ActiveValue::Set(restart_schedule),
             last_error: ActiveValue::NotSet,
             server_mod: ActiveValue::Set(server_mod),
             beta_branch: ActiveValue::Set(beta_branch),
             use_steam_login: ActiveValue::Set(use_steam_login),
+            template_id: ActiveValue::Set(template_id),
         };
+
         record.insert(&ctx.db).await.map_err(ModelError::from)
     }
 
@@ -312,6 +428,20 @@ impl ActiveModel {
         beta_branch: Option<String>,
         use_steam_login: bool,
     ) -> Result<Model, ModelError> {
+        // Enforce uniqueness of name and install_dir
+        {
+            let existing = Model::find_by_name(ctx, &name).await?;
+            if existing.is_some_and(|e| e.id != *self.id.as_ref()) {
+                return Err(ModelError::EntityAlreadyExists);
+            }
+        }
+        {
+            let existing = Model::find_by_install_dir(ctx, &install_dir).await?;
+            if existing.is_some_and(|e| e.id != *self.id.as_ref()) {
+                return Err(ModelError::EntityAlreadyExists);
+            }
+        }
+
         self.name = ActiveValue::Set(name);
         self.install_dir = ActiveValue::Set(install_dir);
         self.server_mod = ActiveValue::Set(server_mod);
@@ -329,6 +459,33 @@ impl Model {
     /// Returns a [`ModelError`] if the database operation fails.
     pub async fn find_by_id(ctx: &AppContext, id: i32) -> Result<Option<Self>, ModelError> {
         Entity::find_by_id(id)
+            .one(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
+    /// Find a game server by its display name.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn find_by_name(ctx: &AppContext, name: &str) -> Result<Option<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::Name.eq(name))
+            .one(&ctx.db)
+            .await
+            .map_err(ModelError::from)
+    }
+
+    /// Find a game server by its install directory path.
+    ///
+    /// # Errors
+    /// Returns a [`ModelError`] if the database operation fails.
+    pub async fn find_by_install_dir(
+        ctx: &AppContext,
+        install_dir: &str,
+    ) -> Result<Option<Self>, ModelError> {
+        Entity::find()
+            .filter(Column::InstallDir.eq(install_dir))
             .one(&ctx.db)
             .await
             .map_err(ModelError::from)

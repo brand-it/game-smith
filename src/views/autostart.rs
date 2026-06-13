@@ -10,15 +10,14 @@ use loco_rs::prelude::*;
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-#[allow(clippy::needless_pass_by_value)]
 pub fn settings(
     _ctx: &AppContext,
-    v: impl ViewRenderer,
+    v: &impl ViewRenderer,
     enabled: bool,
     message: Option<&str>,
 ) -> Result<impl IntoResponse> {
     format::render().view(
-        &v,
+        v,
         "autostart/settings.html",
         data!({
             "enabled": enabled,

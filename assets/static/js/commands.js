@@ -28,6 +28,91 @@ const STEAM_GUARD_PATTERNS = [
   "Two-factor code:",
   "Enter the current code from your Steam Guard Mobile Authenticator",
 ];
+/**
+ * ANSI SGR code to Tailwind class mapping.
+ * Only foreground colors and text styles are mapped; background colors are ignored.
+ */
+const ANSI_STYLES = {
+  0: null,
+  1: "font-bold",
+  2: "opacity-70",
+  3: "italic",
+  4: "underline",
+  30: "text-gray-700",
+  31: "text-red-500",
+  32: "text-green-500",
+  33: "text-yellow-500",
+  34: "text-blue-500",
+  35: "text-purple-500",
+  36: "text-cyan-500",
+  37: "text-gray-300",
+  90: "text-gray-500",
+  91: "text-red-400",
+  92: "text-green-400",
+  93: "text-yellow-400",
+  94: "text-blue-400",
+  95: "text-purple-400",
+  96: "text-cyan-400",
+  97: "text-white",
+};
+
+/**
+ * Convert ANSI escape sequences to styled HTML spans using Tailwind classes.
+ *
+ * @param {string} text - Raw text containing ANSI escape sequences.
+ * @returns {string} HTML string with styled spans.
+ */
+function ansiToHtml(text) {
+  let html = "";
+  let i = 0;
+  let currentClasses = [];
+  let buffer = "";
+
+  const flushBuffer = () => {
+    if (buffer.length === 0) return;
+    if (currentClasses.length > 0) {
+      html += `<span class="${currentClasses.join(" ")}">${buffer}</span>`;
+    } else {
+      html += buffer;
+    }
+    buffer = "";
+  };
+
+  while (i < text.length) {
+    if (text[i] === "\x1b" && text[i + 1] === "[") {
+      let j = i + 2;
+      while (j < text.length && text[j] >= "0" && text[j] <= "9") {
+        j++;
+      }
+      if (j < text.length && text[j] === "m") {
+        flushBuffer();
+        const codes = text.slice(i + 2, j).split(";");
+        currentClasses = [];
+        for (const code of codes) {
+          const num = parseInt(code, 10);
+          if (num === 0) {
+            currentClasses = [];
+            break;
+          }
+          const cls = ANSI_STYLES[num];
+          if (cls) {
+            currentClasses.push(cls);
+          }
+        }
+        i = j + 1;
+      } else {
+        buffer += text[i];
+        i++;
+      }
+    } else {
+      buffer += text[i];
+      i++;
+    }
+  }
+
+  flushBuffer();
+  return html;
+}
 
 /**
  * Show the Steam Guard action-required banner.
@@ -92,11 +177,12 @@ function connectToCommand(runId, initialStatus) {
   socket.on("log", (event) => {
     const data = event.data;
     if (data) {
-      logEl.textContent += data;
+      // Detect Steam Guard prompts on raw data before conversion
+      checkForSteamGuard(data);
+      // Convert ANSI escape codes and append as HTML
+      logEl.innerHTML += ansiToHtml(data);
       // Auto-scroll to bottom
       logEl.scrollTop = logEl.scrollHeight;
-      // Detect Steam Guard prompts and surface the action banner
-      checkForSteamGuard(data);
     }
   });
 
@@ -167,7 +253,12 @@ window.addEventListener("beforeunload", disconnect);
 document.addEventListener("DOMContentLoaded", () => {
   const logEl = document.getElementById("log-output");
   if (logEl && logEl.textContent) {
+    // Check for Steam Guard prompts before converting (raw text includes ANSI)
     checkForSteamGuard(logEl.textContent);
+    // Convert ANSI escape codes to styled HTML
+    logEl.innerHTML = ansiToHtml(logEl.textContent);
+    // Remove initial opacity to avoid flash of unstyled content
+    logEl.classList.remove("opacity-0");
   }
 });
 
@@ -175,4 +266,5 @@ document.addEventListener("DOMContentLoaded", () => {
 if (typeof window !== "undefined") {
   window.connectToCommand = connectToCommand;
   window.disconnectSocket = disconnect;
+  window.ansiToHtml = ansiToHtml;
 }

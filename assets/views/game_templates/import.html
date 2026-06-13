@@ -1,0 +1,144 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}{{ t(key="templates-import-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="templates-back", lang="en-US") }}</a>
+    <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="templates-import-title", lang="en-US") }}</h1>
+</div>
+
+<!-- Error -->
+{% if error %}
+<div class="mb-3 bg-red-50 border border-red-200 rounded-lg p-4">
+    <p class="text-sm text-red-700 m-0">{{ error }}</p>
+</div>
+{% endif %}
+
+{% if not import_result %}
+<!-- Import Form -->
+<div class="bg-white border border-gray-200 rounded-lg p-4 max-w-[640px]">
+    <form action="/templates/import" method="post">
+        <div class="mb-3">
+            <label for="template_data" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-import-data-label", lang="en-US") }}</label>
+            <textarea name="template_data" id="template_data" required rows="4"
+                placeholder="{{ t(key="templates-import-data-placeholder", lang="en-US") }}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200"></textarea>
+            <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="templates-import-help", lang="en-US") }}</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                class="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700">
+                {{ t(key="templates-import-paste", lang="en-US") }}
+            </button>
+            <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">{{ t(key="templates-cancel", lang="en-US") }}</a>
+        </div>
+    </form>
+</div>
+{% else %}
+<!-- Import Preview -->
+<div class="bg-white border border-gray-200 rounded-lg p-4 max-w-[720px]">
+    <h2 class="section-heading mb-2">{{ t(key="templates-import-preview", lang="en-US") }}</h2>
+
+    <dl class="space-y-3 mb-4">
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-name", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{{ import_result.export.name }}</dd>
+        </div>
+        {% if import_result.export.description %}
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-description", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{{ import_result.export.description }}</dd>
+        </div>
+        {% endif %}
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-app-id", lang="en-US") }}</dt>
+            <dd class="text-sm font-mono text-slate-900 m-0">{{ import_result.export.app_id }}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-server-mod", lang="en-US") }}</dt>
+            <dd class="text-sm font-mono text-slate-900 m-0">{{ import_result.export.server_mod | default(value="—") }}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-beta-branch", lang="en-US") }}</dt>
+            <dd class="text-sm font-mono text-slate-900 m-0">{{ import_result.export.beta_branch | default(value="—") }}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-login-mode", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{% if import_result.export.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-boot-script", lang="en-US") }}</dt>
+            <dd class="m-0">
+                <pre class="text-xs font-mono text-slate-900 bg-gray-50 p-2 rounded border border-gray-200 max-h-[80px] overflow-y-auto whitespace-pre-wrap">{{ import_result.export.boot_script | default(value="—") }}</pre>
+            </dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-auto-start", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{% if import_result.export.auto_start %}<span class="text-green-600">On</span>{% else %}<span class="text-slate-400">Off</span>{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-auto-restart", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{% if import_result.export.auto_restart %}<span class="text-green-600">On</span>{% else %}<span class="text-slate-400">Off</span>{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-auto-update", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{% if import_result.export.auto_update %}<span class="text-green-600">On</span>{% else %}<span class="text-slate-400">Off</span>{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-update-on-start", lang="en-US") }}</dt>
+            <dd class="text-sm text-slate-900 m-0">{% if import_result.export.update_on_start %}<span class="text-green-600">On</span>{% else %}<span class="text-slate-400">Off</span>{% endif %}</dd>
+        </div>
+        <div>
+            <dt class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">{{ t(key="templates-restart-schedule", lang="en-US") }}</dt>
+            <dd class="text-sm font-mono text-slate-900 m-0">{{ import_result.export.restart_schedule | default(value="—") }}</dd>
+        </div>
+    </dl>
+
+    <!-- Create form with hidden inputs -->
+    <form action="/templates" method="post">
+        <input type="hidden" name="name" value="{{ import_result.export.name }}">
+        {% if import_result.export.description %}
+        <input type="hidden" name="description" value="{{ import_result.export.description }}">
+        {% endif %}
+        <input type="hidden" name="app_id" value="{{ import_result.export.app_id }}">
+        {% if import_result.export.server_mod %}
+        <input type="hidden" name="server_mod" value="{{ import_result.export.server_mod }}">
+        {% endif %}
+        {% if import_result.export.beta_branch %}
+        <input type="hidden" name="beta_branch" value="{{ import_result.export.beta_branch }}">
+        {% endif %}
+        {% if import_result.export.boot_script %}
+        <input type="hidden" name="boot_script" value="{{ import_result.export.boot_script }}">
+        {% endif %}
+        {% if import_result.export.use_steam_login %}
+        <input type="hidden" name="use_steam_login" value="true">
+        {% endif %}
+        {% if import_result.export.auto_start %}
+        <input type="hidden" name="auto_start" value="true">
+        {% endif %}
+        {% if import_result.export.auto_restart %}
+        <input type="hidden" name="auto_restart" value="true">
+        {% endif %}
+        {% if import_result.export.auto_update %}
+        <input type="hidden" name="auto_update" value="true">
+        {% endif %}
+        {% if import_result.export.update_on_start %}
+        <input type="hidden" name="update_on_start" value="true">
+        {% endif %}
+        {% if import_result.export.restart_schedule %}
+        <input type="hidden" name="restart_schedule" value="{{ import_result.export.restart_schedule }}">
+        {% endif %}
+
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                class="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700">
+                {{ t(key="templates-import-create", lang="en-US") }}
+            </button>
+            <a href="/templates/import" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">{{ t(key="templates-import-back", lang="en-US") }}</a>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

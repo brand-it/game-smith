@@ -11,7 +11,7 @@
 </p>
 
 {% if error %}
-<div class="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
+<div class="mt-3 rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
     <div class="flex">
         <div class="flex-shrink-0">
             <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
@@ -26,7 +26,7 @@
 {% endif %}
 
 {% if success %}
-<div class="mt-6 rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm">
+<div class="mt-3 rounded-lg border border-green-200 bg-green-50 p-4 shadow-sm">
     <div class="flex">
         <div class="flex-shrink-0">
             <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
@@ -40,7 +40,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="/steam-config" class="mt-6 space-y-6">
+<form method="post" action="/steam-config" class="mt-3 space-y-4">
     <div>
         <label for="steam_username" class="block text-sm font-medium text-gray-700">
             Steam Username
@@ -81,7 +81,7 @@
 </form>
 
 {% if username %}
-<div class="mt-8 border-t border-gray-200 pt-6">
+<div class="mt-4 border-t border-gray-200 pt-4">
     <h2 class="text-lg font-medium text-gray-900">Clear Credentials</h2>
     <p class="mt-1 text-sm text-gray-600">
         Remove your stored Steam account credentials. Existing servers using Steam login will no longer be able to authenticate until new credentials are configured.

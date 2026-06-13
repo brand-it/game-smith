@@ -1,7 +1,20 @@
 use game_smith::app::App;
-use game_smith::models::game_servers::ActiveModel;
+use game_smith::models::game_servers::{ActiveModel, CreateServerForm};
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
+/// Create a minimal [`CreateServerForm`] for test setup.
+fn make_form(app_id: u32, name: &str) -> CreateServerForm {
+    CreateServerForm {
+        app_id: app_id.to_string(),
+        name: name.to_string(),
+        server_mod: None,
+        beta_branch: None,
+        use_steam_login: false,
+        steam_username: None,
+        steam_password: None,
+        template_id: None,
+    }
+}
 
 /// GET /servers renders the game server list page.
 #[tokio::test]
@@ -38,18 +51,9 @@ async fn servers_list_empty_state() {
 #[serial]
 async fn servers_list_with_data() {
     request::<App, _, _>(|request, ctx| async move {
-        ActiveModel::create(
-            &ctx,
-            730,
-            "My CS2 Server".to_string(),
-            "/tmp/game-smith/games/my-cs2-server".to_string(),
-            "linux".to_string(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .expect("Failed to create game server");
+        ActiveModel::create(&ctx, &make_form(730, "My CS2 Server"), None)
+            .await
+            .expect("Failed to create game server");
 
         let response = request.get("/servers").await;
         response.assert_status_success();
@@ -63,18 +67,35 @@ async fn servers_list_with_data() {
     .await;
 }
 
-/// GET /servers/new renders the install form.
+/// GET /servers/new renders the creation landing page.
 #[tokio::test]
 #[serial]
-async fn servers_new_form_renders() {
+async fn servers_new_landing_renders() {
     request::<App, _, _>(|request, _ctx| async move {
         let response = request.get("/servers/new").await;
         response.assert_status_success();
 
         let body = response.text();
         assert!(body.contains("<!DOCTYPE html>"));
-        assert!(body.contains("Steam App ID") || body.contains("app_id"));
-        assert!(body.contains("Server Name") || body.contains("name"));
+        assert!(body.contains("Create New Server"));
+        // "Create from Template" card should NOT appear when no templates exist
+        assert!(!body.contains("servers-create-from-template"));
+    })
+    .await;
+}
+
+/// GET /servers/new/form renders the blank install form.
+#[tokio::test]
+#[serial]
+async fn servers_new_form_page_renders() {
+    request::<App, _, _>(|request, _ctx| async move {
+        let response = request.get("/servers/new/form").await;
+        response.assert_status_success();
+
+        let body = response.text();
+        assert!(body.contains("<!DOCTYPE html>"));
+        assert!(body.contains("Steam App ID"));
+        assert!(body.contains("Server Name"));
     })
     .await;
 }
@@ -99,18 +120,9 @@ async fn servers_show_not_found() {
 #[serial]
 async fn servers_show_renders() {
     request::<App, _, _>(|request, ctx| async move {
-        let model = ActiveModel::create(
-            &ctx,
-            740,
-            "CS:GO Detail Server".to_string(),
-            "/tmp/game-smith/games/csgo-detail".to_string(),
-            "linux".to_string(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .expect("Failed to create game server");
+        let model = ActiveModel::create(&ctx, &make_form(740, "CS:GO Detail Server"), None)
+            .await
+            .expect("Failed to create game server");
 
         let url = format!("/servers/{}", model.id);
         let response = request.get(&url).await;
@@ -122,7 +134,10 @@ async fn servers_show_renders() {
             "Server name should appear"
         );
         assert!(body.contains("740"), "App ID should appear");
-        assert!(body.contains("linux"), "Platform should appear");
+        assert!(
+            body.contains(std::env::consts::OS),
+            "Platform should appear"
+        );
     })
     .await;
 }
@@ -153,7 +168,7 @@ async fn servers_create_invalid_app_id() {
 #[tokio::test]
 #[serial]
 async fn servers_create_checkbox_unchecked_defaults_false() {
-    use game_smith::controllers::game_servers::CreateServerForm;
+    use game_smith::models::game_servers::CreateServerForm;
 
     // Unchecked checkbox sends nothing for use_steam_login
     let data = "app_id=730&name=Test+Server";
@@ -166,7 +181,7 @@ async fn servers_create_checkbox_unchecked_defaults_false() {
 #[tokio::test]
 #[serial]
 async fn servers_create_checkbox_checked_parses_true() {
-    use game_smith::controllers::game_servers::CreateServerForm;
+    use game_smith::models::game_servers::CreateServerForm;
 
     // Checked checkbox sends use_steam_login=true
     let data = "app_id=730&name=Test+Server&use_steam_login=true";
@@ -179,7 +194,7 @@ async fn servers_create_checkbox_checked_parses_true() {
 #[tokio::test]
 #[serial]
 async fn servers_create_checkbox_non_true_value_fails() {
-    use game_smith::controllers::game_servers::CreateServerForm;
+    use game_smith::models::game_servers::CreateServerForm;
 
     // A non-"true" value should fail deserialization since the field expects a bool
     let data = "app_id=730&name=Test+Server&use_steam_login=on";
@@ -220,18 +235,9 @@ async fn servers_update_does_not_500_when_install_dir_missing() {
             .join(format!("gs-req-update-{}/nonexistent", std::process::id()))
             .to_string_lossy()
             .to_string();
-        let model = ActiveModel::create(
-            &ctx,
-            740,
-            "Update Test Server".to_string(),
-            nonexistent,
-            "linux".to_string(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .expect("failed to create server record");
+        let model = ActiveModel::create(&ctx, &make_form(740, "Update Test Server"), None)
+            .await
+            .expect("failed to create server record");
 
         let url = format!("/servers/{}/update", model.id);
         let response = request.post(&url).await;
@@ -242,6 +248,157 @@ async fn servers_update_does_not_500_when_install_dir_missing() {
             response.status_code().as_u16(),
             500,
             "POST /servers/:id/update must not 500 when install_dir is missing (got WriteScript)"
+        );
+    })
+    .await;
+}
+/// GET /servers/new must show the "Create from Template" card when templates exist,
+/// and /servers/new/form?template_id=X must render with pre-filled data.
+#[tokio::test]
+#[serial]
+async fn servers_new_form_renders_with_templates() {
+    request::<App, _, _>(|request, ctx| async move {
+        // Create a template with all fields populated
+        let active = game_smith::models::game_templates::ActiveModel::create(
+            &ctx,
+            "Test Template".to_string(),
+            Some("Test description".to_string()),
+            730,
+            Some("csgo".to_string()),
+            Some("dev".to_string()),
+            Some("run.sh".to_string()),
+            true,
+            true,
+            true,
+            true,
+            true,
+            Some("0 4 * * *".to_string()),
+        )
+        .await
+        .expect("Failed to create test template");
+
+        let template_id = active.id;
+
+        // Landing page should show "Create from Template" card
+        let landing_response = request.get("/servers/new").await;
+        landing_response.assert_status_success();
+        let landing_body = landing_response.text();
+        assert!(
+            landing_body.contains("Create from Template"),
+            "Landing page should show template option when templates exist"
+        );
+
+        // Form page with template_id should render and pre-fill app_id
+        let form_response = request
+            .get(&format!("/servers/new/form?template_id={}", template_id))
+            .await;
+        form_response.assert_status_success();
+        let form_body = form_response.text();
+        assert!(form_body.contains("<!DOCTYPE html>"));
+        assert!(
+            form_body.contains("value=\"730\""),
+            "Form should pre-fill app_id from template"
+        );
+    })
+    .await;
+}
+
+/// GET /servers/new/select-template renders the template selection page.
+#[tokio::test]
+#[serial]
+async fn servers_select_template_renders() {
+    request::<App, _, _>(|request, ctx| async move {
+        // With no templates, shows empty state
+        let response = request.get("/servers/new/select-template").await;
+        response.assert_status_success();
+        let body = response.text();
+        assert!(body.contains("<!DOCTYPE html>"));
+        assert!(body.contains("Choose a Template"));
+        assert!(body.contains("No templates available"));
+
+        // Create a template
+        let active = game_smith::models::game_templates::ActiveModel::create(
+            &ctx,
+            "Test Template".to_string(),
+            Some("Test description".to_string()),
+            730,
+            Some("csgo".to_string()),
+            Some("dev".to_string()),
+            Some("run.sh".to_string()),
+            true,
+            true,
+            true,
+            true,
+            true,
+            Some("0 4 * * *".to_string()),
+        )
+        .await
+        .expect("Failed to create test template");
+
+        let template_id = active.id;
+
+        // With templates, shows card with template info
+        let response = request.get("/servers/new/select-template").await;
+        response.assert_status_success();
+        let body = response.text();
+        assert!(body.contains("Test Template"));
+        assert!(body.contains("Test description"));
+        assert!(body.contains("730"));
+        assert!(body.contains("csgo"));
+        assert!(body.contains("dev"));
+        assert!(body.contains("Use this template"));
+        assert!(
+            body.contains(&format!("/servers/new/form?template_id={}", template_id)),
+            "Card button should link to form with template_id"
+        );
+    })
+    .await;
+}
+
+/// POST /servers with a duplicate name re-renders the form with an error message
+/// and the submitted data preserved.
+#[tokio::test]
+#[serial]
+async fn servers_create_duplicate_name_renders_form_with_error() {
+    request::<App, _, _>(|request, ctx| async move {
+        // Create an initial server
+        ActiveModel::create(&ctx, &make_form(730, "Duplicate Test Server"), None)
+            .await
+            .expect("Failed to create initial game server");
+
+        // Try to create a server with the same name
+        let response = request
+            .post("/servers")
+            .form(&[
+                ("app_id", "730"),
+                ("name", "Duplicate Test Server"),
+                ("server_mod", ""),
+                ("beta_branch", ""),
+                ("use_steam_login", "false"),
+            ])
+            .await;
+
+        // Should return 200 with form re-render (not redirect)
+        response.assert_status_success();
+        let body = response.text();
+
+        // Error message should be present
+        assert!(
+            body.contains("already exists"),
+            "Form should show duplicate error message, got: {}",
+            body
+        );
+
+        // Form data should be preserved
+        assert!(
+            body.contains("Duplicate Test Server"),
+            "Form should preserve submitted name, got: {}",
+            body
+        );
+        assert!(
+            body.contains("730"),
+            "Form should preserve submitted app_id, got: {}",
+            body
         );
     })
     .await;

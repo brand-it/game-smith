@@ -1,7 +1,7 @@
 use game_smith::app::App;
 use game_smith::models::command_runs::{ActiveModel, CommandStatus, Model as CommandRunModel};
 use game_smith::models::game_servers::{
-    ActiveModel as GameServerActiveModel, Model as GameServerModel, ServerStatus,
+    ActiveModel as GameServerActiveModel, CreateServerForm, Model as GameServerModel, ServerStatus,
 };
 use loco_rs::boot::run_task;
 use loco_rs::{task, testing::prelude::*};
@@ -14,6 +14,19 @@ macro_rules! configure_insta {
         settings.set_prepend_module_to_snapshot(false);
         let _guard = settings.bind_to_scope();
     };
+}
+
+fn make_form(app_id: u32, name: &str) -> CreateServerForm {
+    CreateServerForm {
+        app_id: app_id.to_string(),
+        name: name.to_string(),
+        server_mod: None,
+        beta_branch: None,
+        use_steam_login: false,
+        steam_username: None,
+        steam_password: None,
+        template_id: None,
+    }
 }
 
 /// Verify the task runs successfully with no running command runs.
@@ -206,18 +219,10 @@ async fn test_pid_liveness_preserves_server_status() {
     let boot = boot_test::<App>().await.unwrap();
 
     // Create a game server
-    let server = GameServerActiveModel::create(
-        &boot.app_context,
-        730,
-        "Test Server".to_string(),
-        "/tmp/game-smith/games/test-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create server");
+    let server =
+        GameServerActiveModel::create(&boot.app_context, &make_form(730, "Test Server"), None)
+            .await
+            .expect("Failed to create server");
 
     let server_id = server.id as i64;
     let server_id_i32 = server.id;
