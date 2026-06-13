@@ -1,0 +1,5 @@
+[store]
+dir = ".nextest"
+
+[default]
+status-timeout = "120s"
