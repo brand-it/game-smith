@@ -2,4 +2,5 @@
 
 pub use super::command_runs::Entity as CommandRuns;
 pub use super::game_servers::Entity as GameServers;
+pub use super::game_templates::Entity as GameTemplates;
 pub use super::steam_credentials::Entity as SteamCredentials;

@@ -1,0 +1,185 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}{{ template.name }} — {{ t(key="templates-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="templates-back", lang="en-US") }}</a>
+    <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ template.name }}</h1>
+{% if error %}
+<div class="mb-5 bg-red-50 border border-red-200 rounded-lg p-4">
+    <p class="text-sm text-red-700 m-0">{{ error }}</p>
+</div>
+{% endif %}
+
+<!-- 2-column layout: Form (left) | Export + Delete (right) -->
+<div class="grid grid-cols-2 gap-5 mb-5">
+
+    <!-- ═══ Left column: Editable Form ═══ -->
+    <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <h2 class="section-heading mb-4">{{ t(key="templates-edit-settings", lang="en-US") }}</h2>
+
+        <form action="/templates/{{ template.id }}" method="post">
+            <!-- Name + App ID -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-name", lang="en-US") }}</label>
+                    <input type="text" name="name" id="name" required
+                        value="{% if form_data %}{{ form_data.name }}{% else %}{{ template.name }}{% endif %}"
+                        class="form-input">
+                </div>
+                <div>
+                    <label for="app_id" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-app-id", lang="en-US") }}</label>
+                    <input type="text" name="app_id" id="app_id" required placeholder="730"
+                        value="{% if form_data %}{{ form_data.app_id }}{% else %}{{ template.app_id }}{% endif %}"
+                        class="form-input">
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="mb-4">
+                <label for="description" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-description", lang="en-US") }}</label>
+                <textarea name="description" id="description" rows="2"
+                    class="form-textarea">{% if form_data %}{{ form_data.description | default(value="") }}{% else %}{{ template.description | default(value="") }}{% endif %}</textarea>
+            </div>
+
+            <!-- Server Mod + Beta Branch -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="server_mod" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-mod", lang="en-US") }}</label>
+                    <input type="text" name="server_mod" id="server_mod"
+                        value="{% if form_data %}{{ form_data.server_mod | default(value='') }}{% else %}{{ template.server_mod | default(value="") }}{% endif %}"
+                        class="form-input">
+                </div>
+                <div>
+                    <label for="beta_branch" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-beta", lang="en-US") }}</label>
+                    <input type="text" name="beta_branch" id="beta_branch"
+                        value="{% if form_data %}{{ form_data.beta_branch | default(value='') }}{% else %}{{ template.beta_branch | default(value="") }}{% endif %}"
+                        class="form-input">
+                </div>
+            </div>
+
+            <!-- Boot Script -->
+            <div class="mb-4">
+                <label for="boot_script" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-boot-script", lang="en-US") }}</label>
+                <textarea name="boot_script" id="boot_script" rows="3"
+                    class="form-textarea">{% if form_data %}{{ form_data.boot_script | default(value="") }}{% else %}{{ template.boot_script | default(value="") }}{% endif %}</textarea>
+                <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="templates-form-boot-script-help", lang="en-US") }}</p>
+            </div>
+
+            <!-- Use Steam Login -->
+            <div class="mb-4 p-4 bg-slate-50 rounded-lg border border-gray-200">
+                <div class="flex items-center gap-2">
+                    <label class="toggle">
+                        <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
+                            {% if form_data and form_data.use_steam_login %}checked{% elif template.use_steam_login %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-knob"></span>
+                    </label>
+                    <span class="text-sm font-medium text-slate-700">{{ t(key="templates-form-use-steam-login", lang="en-US") }}</span>
+                </div>
+                <p class="mt-1.5 ml-11 mb-0 text-xs text-slate-500">{{ t(key="templates-form-use-steam-login-help", lang="en-US") }}</p>
+            </div>
+
+            <!-- Auto Settings -->
+            <h2 class="section-heading mb-3">{{ t(key="templates-auto-settings", lang="en-US") }}</h2>
+            <div class="mb-4">
+                <div class="mb-3 flex items-center gap-2">
+                    <label class="toggle">
+                        <input type="checkbox" name="auto_start" id="auto_start" value="true"
+                            {% if form_data and form_data.auto_start %}checked{% elif template.auto_start %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-knob"></span>
+                    </label>
+                    <span class="text-sm font-medium text-slate-700">{{ t(key="templates-form-auto-start", lang="en-US") }}</span>
+                </div>
+                <div class="mb-3 flex items-center gap-2">
+                    <label class="toggle">
+                        <input type="checkbox" name="auto_restart" id="auto_restart" value="true"
+                            {% if form_data and form_data.auto_restart %}checked{% elif template.auto_restart %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-knob"></span>
+                    </label>
+                    <span class="text-sm font-medium text-slate-700">{{ t(key="templates-form-auto-restart", lang="en-US") }}</span>
+                </div>
+                <div class="mb-3 flex items-center gap-2">
+                    <label class="toggle">
+                        <input type="checkbox" name="auto_update" id="auto_update" value="true"
+                            {% if form_data and form_data.auto_update %}checked{% elif template.auto_update %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-knob"></span>
+                    </label>
+                    <span class="text-sm font-medium text-slate-700">{{ t(key="templates-form-auto-update", lang="en-US") }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="toggle">
+                        <input type="checkbox" name="update_on_start" id="update_on_start" value="true"
+                            {% if form_data and form_data.update_on_start %}checked{% elif template.update_on_start %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-knob"></span>
+                    </label>
+                    <span class="text-sm font-medium text-slate-700">{{ t(key="templates-form-update-on-start", lang="en-US") }}</span>
+                </div>
+            </div>
+
+            <!-- Restart Schedule -->
+            <div class="mb-5">
+                <label for="restart_schedule" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-restart-schedule", lang="en-US") }}</label>
+                <input type="text" name="restart_schedule" id="restart_schedule" placeholder="0 4 * * *"
+                    value="{% if form_data %}{{ form_data.restart_schedule | default(value='') }}{% else %}{{ template.restart_schedule | default(value="") }}{% endif %}"
+                    class="form-input">
+                <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="templates-form-restart-schedule-help", lang="en-US") }}</p>
+            </div>
+
+            <!-- Save button -->
+            <div>
+                <button type="submit" class="btn-primary">
+                    {{ t(key="templates-form-save", lang="en-US") }}
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ═══ Right column: Export + Delete ═══ -->
+    <div class="flex flex-col gap-5">
+        <!-- Export -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h2 class="section-heading mb-3">{{ t(key="templates-export", lang="en-US") }}</h2>
+            <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="templates-export-help", lang="en-US") }}</p>
+            <div class="relative">
+                <textarea id="export-string" rows="3" readonly
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono text-slate-900 bg-gray-50 outline-none resize-none">{{ export_string }}</textarea>
+                <button type="button" onclick="copyExport(this)"
+                    class="absolute top-2 right-2 px-3 py-1 text-xs font-medium text-slate-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                    {{ t(key="templates-copy", lang="en-US") }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h2 class="section-heading mb-3">{{ t(key="templates-actions", lang="en-US") }}</h2>
+            <form action="/templates/{{ template.id }}/delete" method="post" class="m-0"
+                onsubmit="return confirm('{{ t(key="templates-delete-confirm", lang="en-US") }}')">
+                <button type="submit" class="btn-danger">
+                    {{ t(key="templates-delete", lang="en-US") }}
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyExport(btn) {
+    const el = document.getElementById('export-string');
+    el.select();
+    navigator.clipboard.writeText(el.value).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = original, 1500);
+    });
+}
+</script>
+{% endblock %}

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use axum::routing::get;
+use axum::{response::Redirect, routing::get};
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     bgworker::{BackgroundWorker, Queue},
@@ -126,10 +126,11 @@ impl Hooks for App {
             .add_route(controllers::steamcmd::routes())
             .add_route(controllers::game_servers::routes())
             .add_route(controllers::steam_config::routes())
+            .add_route(controllers::game_templates::routes())
             .add_route(controllers::autostart::routes())
             .add_route(controllers::shutdown::routes())
             .add_route(controllers::shutdown::ping_route())
-            .add_route(Routes::new().add("/", get(controllers::commands::list)))
+            .add_route(Routes::new().add("/", get(redirect_to_servers)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;
@@ -150,6 +151,11 @@ impl Hooks for App {
     async fn seed(_ctx: &AppContext, _base: &std::path::Path) -> Result<()> {
         Ok(())
     }
+}
+
+#[axum::debug_handler]
+async fn redirect_to_servers() -> Redirect {
+    Redirect::to("/servers")
 }
 
 /// Remove `seaql_migrations` records for migrations that no longer exist in the

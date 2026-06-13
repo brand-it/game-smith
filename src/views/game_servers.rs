@@ -57,15 +57,63 @@ pub async fn list(
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
-pub fn new_form(v: &impl ViewRenderer, steam_username: Option<&str>) -> Result<impl IntoResponse> {
+pub fn new_form(
+    v: &impl ViewRenderer,
+    steam_username: Option<&str>,
+    templates: &[crate::models::game_templates::Model],
+) -> Result<impl IntoResponse> {
     format::render().view(
         v,
         "game_servers/new.html",
-        data!({ "steam_username": steam_username }),
+        data!({
+            "steam_username": steam_username,
+            "templates": templates,
+            "has_templates": !templates.is_empty(),
+        }),
     )
 }
 
-/// Render a single game server detail page.
+/// Render the new game server install form, optionally pre-filled from a template.
+///
+/// # Errors
+/// Returns an error if template rendering fails.
+pub fn new_form_with_template(
+    v: &impl ViewRenderer,
+    steam_username: Option<&str>,
+    template: Option<&crate::models::game_templates::Model>,
+    error: Option<&str>,
+    form_data: Option<&crate::models::game_servers::Model>,
+) -> Result<impl IntoResponse> {
+    format::render().view(
+        v,
+        "game_servers/new_form.html",
+        data!({
+            "steam_username": steam_username,
+            "template": template,
+            "error": error,
+            "form_data": form_data,
+        }),
+    )
+}
+
+/// Render the template selection page.
+///
+/// # Errors
+/// Returns an error if template rendering fails.
+pub fn select_template(
+    v: &impl ViewRenderer,
+    templates: &[crate::models::game_templates::Model],
+) -> Result<impl IntoResponse> {
+    format::render().view(
+        v,
+        "game_servers/select_template.html",
+        data!({
+            "templates": templates,
+        }),
+    )
+}
+
+/// Render the game server detail page.
 ///
 /// # Errors
 /// Returns an error if template rendering fails.
@@ -73,7 +121,8 @@ pub async fn show(
     ctx: &AppContext,
     v: &(impl ViewRenderer + Sync),
     server: &GameServerModel,
-) -> Result<impl IntoResponse> {
+    error: Option<&str>,
+) -> Result<axum::http::Response<axum::body::Body>> {
     let view = GameServerView::new(server);
 
     let has_steam_creds = crate::models::steam_credentials::Model::is_configured(ctx)
@@ -99,14 +148,17 @@ pub async fn show(
         String::new()
     };
 
-    format::render().view(
-        v,
-        "game_servers/show.html",
-        data!({
-            "server": view,
-            "latest_run": latest_run,
-            "run_log": run_log,
-            "has_steam_creds": has_steam_creds,
-        }),
-    )
+    format::render()
+        .view(
+            v,
+            "game_servers/show.html",
+            data!({
+                "server": view,
+                "latest_run": latest_run,
+                "run_log": run_log,
+                "has_steam_creds": has_steam_creds,
+                "error": error,
+            }),
+        )
+        .map(axum::response::IntoResponse::into_response)
 }

@@ -1,0 +1,64 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}{{ t(key="servers-select-template-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/servers/new" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
+    <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="servers-select-template-title", lang="en-US") }}</h1>
+    <p class="text-sm text-slate-500 mt-2 m-0">{{ t(key="servers-select-template-subtitle", lang="en-US") }}</p>
+</div>
+
+{% if templates|length > 0 %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[960px]">
+    {% for template in templates %}
+    <div class="bg-white border border-gray-200 rounded-lg p-6 flex flex-col">
+        <div class="flex-1">
+            <h2 class="text-lg font-semibold text-slate-900 mb-1">{{ template.name }}</h2>
+            {% if template.description %}
+            <p class="text-sm text-slate-500 mb-4">{{ template.description }}</p>
+            {% endif %}
+
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-500">{{ t(key="servers-select-template-app-id", lang="en-US") }}</span>
+                    <span class="font-mono text-slate-700">{{ template.app_id }}</span>
+                </div>
+                {% if template.server_mod %}
+                <div class="flex justify-between">
+                    <span class="text-slate-500">{{ t(key="servers-select-template-mod", lang="en-US") }}</span>
+                    <span class="text-slate-700">{{ template.server_mod }}</span>
+                </div>
+                {% endif %}
+                {% if template.beta_branch %}
+                <div class="flex justify-between">
+                    <span class="text-slate-500">{{ t(key="servers-select-template-beta", lang="en-US") }}</span>
+                    <span class="text-slate-700">{{ template.beta_branch }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between">
+                    <span class="text-slate-500">{{ t(key="servers-select-template-login", lang="en-US") }}</span>
+                    <span class="text-slate-700">{% if template.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-gray-100">
+            <a href="/servers/new/form?template_id={{ template.id }}"
+                class="inline-flex w-full justify-center items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
+                {{ t(key="servers-select-template-use", lang="en-US") }}
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-white border border-gray-200 rounded-lg p-16 text-center">
+    <p class="text-slate-500 m-0 mb-4">{{ t(key="servers-select-template-empty", lang="en-US") }}</p>
+    <a href="/templates/new"
+        class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
+        + {{ t(key="servers-select-template-create-one", lang="en-US") }}
+    </a>
+</div>
+{% endif %}
+{% endblock %}

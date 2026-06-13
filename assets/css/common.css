@@ -18,7 +18,8 @@
 }
 
 .toggle .toggle-knob {
-  @apply pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200;
+  @apply pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white
+         shadow ring-0 transition-transform duration-200 ease-out;
 }
 
 .toggle input:checked ~ .toggle-knob {
@@ -146,11 +147,22 @@
          border-0 cursor-pointer text-left transition-colors
          bg-blue-600 hover:bg-blue-700;
 }
+.btn-action-secondary {
+  @apply w-full px-4 py-2.5 text-sm font-medium text-slate-700 rounded-lg
+         border border-gray-300 cursor-pointer text-left transition-colors
+         bg-white hover:bg-slate-50 no-underline;
+}
 
 .btn-danger {
   @apply w-full px-4 py-2.5 text-sm font-medium text-slate-500 bg-slate-50
          rounded-lg border border-gray-200 cursor-pointer text-left
          transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-300;
+}
+
+.btn-action-soft {
+  @apply w-full px-4 py-2.5 text-sm font-medium text-blue-700 rounded-lg
+         border border-blue-300 cursor-pointer text-left transition-colors
+         bg-blue-50 hover:bg-blue-100 no-underline;
 }
 
 /* ── Section headings ── */

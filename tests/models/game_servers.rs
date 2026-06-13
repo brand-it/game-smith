@@ -1,8 +1,9 @@
 use game_smith::app::App;
 use game_smith::models::command_runs::ActiveModel as CommandRunActiveModel;
 use game_smith::models::game_servers::{
-    is_alive, ActiveModel, Model as GameServerModel, ServerStatus,
+    is_alive, ActiveModel, CreateServerForm, Model as GameServerModel, ServerStatus,
 };
+use game_smith::models::game_templates;
 use loco_rs::model::ModelError;
 use loco_rs::testing::prelude::*;
 use sea_orm::ActiveModelTrait;
@@ -16,24 +17,29 @@ macro_rules! configure_insta {
     };
 }
 
+/// Create a minimal [`CreateServerForm`] for test setup.
+fn make_form(app_id: u32, name: &str) -> CreateServerForm {
+    CreateServerForm {
+        app_id: app_id.to_string(),
+        name: name.to_string(),
+        server_mod: None,
+        beta_branch: None,
+        use_steam_login: false,
+        steam_username: None,
+        steam_password: None,
+        template_id: None,
+    }
+}
+
 #[tokio::test]
 #[serial]
 async fn test_create_game_server() {
     configure_insta!();
     let boot = boot_test::<App>().await.unwrap();
 
-    let model = ActiveModel::create(
-        &boot.app_context,
-        730,
-        "My CS2 Server".to_string(),
-        "/tmp/game-smith/games/my-cs2-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create game server");
+    let model = ActiveModel::create(&boot.app_context, &make_form(730, "My CS2 Server"), None)
+        .await
+        .expect("Failed to create game server");
 
     assert_eq!(model.status(), ServerStatus::Pending);
     assert_eq!(model.app_id, 730);
@@ -51,18 +57,9 @@ async fn test_find_by_id() {
     configure_insta!();
     let boot = boot_test::<App>().await.unwrap();
 
-    let model = ActiveModel::create(
-        &boot.app_context,
-        740,
-        "CS:GO Server".to_string(),
-        "/tmp/game-smith/games/csgo-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create game server");
+    let model = ActiveModel::create(&boot.app_context, &make_form(740, "CS:GO Server"), None)
+        .await
+        .expect("Failed to create game server");
 
     let found = GameServerModel::find_by_id(&boot.app_context, model.id)
         .await
@@ -94,13 +91,8 @@ async fn test_update_status() {
 
     let model = ActiveModel::create(
         &boot.app_context,
-        730,
-        "Status Test Server".to_string(),
-        "/tmp/game-smith/games/status-test".to_string(),
-        "linux".to_string(),
+        &make_form(730, "Status Test Server"),
         None,
-        None,
-        false,
     )
     .await
     .expect("Failed to create game server");
@@ -127,18 +119,9 @@ async fn test_list() {
         .expect("Failed to list")
         .len();
 
-    ActiveModel::create(
-        &boot.app_context,
-        252490,
-        "Rust Server".to_string(),
-        "/tmp/game-smith/games/rust-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    ActiveModel::create(&boot.app_context, &make_form(252490, "Rust Server"), None)
+        .await
+        .expect("Failed to create");
 
     let after = GameServerModel::list(&boot.app_context)
         .await
@@ -154,18 +137,9 @@ async fn test_app_id_u32() {
     configure_insta!();
     let boot = boot_test::<App>().await.unwrap();
 
-    let model = ActiveModel::create(
-        &boot.app_context,
-        730,
-        "App ID Test".to_string(),
-        "/tmp/game-smith/games/appid-test".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    let model = ActiveModel::create(&boot.app_context, &make_form(730, "App ID Test"), None)
+        .await
+        .expect("Failed to create");
 
     assert_eq!(model.app_id_u32(), 730u32);
 }
@@ -192,54 +166,28 @@ async fn test_find_running_filters_by_status() {
     let boot = boot_test::<App>().await.unwrap();
 
     // Create three servers with different statuses
-    let _stopped = ActiveModel::create(
-        &boot.app_context,
-        730,
-        "Stopped Server".to_string(),
-        "/tmp/game-smith/games/stopped".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    let _stopped = ActiveModel::create(&boot.app_context, &make_form(730, "Stopped Server"), None)
+        .await
+        .expect("Failed to create");
     let mut stopped_active: ActiveModel = _stopped.clone().into();
     stopped_active
         .update_status(&boot.app_context, ServerStatus::Stopped, None)
         .await
         .expect("Failed to update");
 
-    let _installed = ActiveModel::create(
-        &boot.app_context,
-        740,
-        "Installed Server".to_string(),
-        "/tmp/game-smith/games/installed".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    let _installed =
+        ActiveModel::create(&boot.app_context, &make_form(740, "Installed Server"), None)
+            .await
+            .expect("Failed to create");
     let mut installed_active: ActiveModel = _installed.clone().into();
     installed_active
         .update_status(&boot.app_context, ServerStatus::Installed, None)
         .await
         .expect("Failed to update");
 
-    let running = ActiveModel::create(
-        &boot.app_context,
-        750,
-        "Running Server".to_string(),
-        "/tmp/game-smith/games/running".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    let running = ActiveModel::create(&boot.app_context, &make_form(750, "Running Server"), None)
+        .await
+        .expect("Failed to create");
     let mut running_active: ActiveModel = running.clone().into();
     running_active
         .update_status(&boot.app_context, ServerStatus::Running, None)
@@ -263,18 +211,9 @@ async fn test_find_running_returns_zombie_servers() {
     let boot = boot_test::<App>().await.unwrap();
 
     // Create a server marked as "running" but with no running command runs
-    let server = ActiveModel::create(
-        &boot.app_context,
-        730,
-        "Zombie Server".to_string(),
-        "/tmp/game-smith/games/zombie".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create");
+    let server = ActiveModel::create(&boot.app_context, &make_form(730, "Zombie Server"), None)
+        .await
+        .expect("Failed to create");
     let mut active: ActiveModel = server.clone().into();
     active
         .update_status(&boot.app_context, ServerStatus::Running, None)
@@ -339,13 +278,8 @@ async fn test_find_alive_excludes_zombies() {
     // a PID that almost certainly doesn't exist.
     let zombie = ActiveModel::create(
         &boot.app_context,
-        730,
-        "Zombie Alive Test".to_string(),
-        "/tmp/game-smith/games/zombie-alive".to_string(),
-        "linux".to_string(),
+        &make_form(730, "Zombie Alive Test"),
         None,
-        None,
-        false,
     )
     .await
     .expect("Failed to create zombie");
@@ -362,18 +296,9 @@ async fn test_find_alive_excludes_zombies() {
     // Create an "alive" server: "Running" status with a command run having
     // the PID of this process (always alive).
     let own_pid = std::process::id() as i64;
-    let alive_server = ActiveModel::create(
-        &boot.app_context,
-        740,
-        "Alive Test".to_string(),
-        "/tmp/game-smith/games/alive".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create alive server");
+    let alive_server = ActiveModel::create(&boot.app_context, &make_form(740, "Alive Test"), None)
+        .await
+        .expect("Failed to create alive server");
     let mut alive_active: ActiveModel = alive_server.clone().into();
     alive_active.status = sea_orm::ActiveValue::Set(ServerStatus::Running.as_str().to_string());
     alive_active
@@ -437,13 +362,8 @@ async fn test_find_alive_includes_stopped_but_alive() {
     let own_pid = std::process::id() as i64;
     let server = ActiveModel::create(
         &boot.app_context,
-        750,
-        "Stopped But Alive".to_string(),
-        "/tmp/game-smith/games/stopped-alive".to_string(),
-        "linux".to_string(),
+        &make_form(750, "Stopped But Alive"),
         None,
-        None,
-        false,
     )
     .await
     .expect("Failed to create server");
@@ -524,13 +444,8 @@ async fn test_update_creates_install_dir_before_writing_script() {
     // Create a real DB record so the HTTP handler can load it.
     let server = ActiveModel::create(
         &boot.app_context,
-        740,
-        "Update Regression Server".to_string(),
-        install_dir,
-        "linux".to_string(),
+        &make_form(740, "Update Regression Server"),
         None,
-        None,
-        false,
     )
     .await
     .expect("failed to create server record");
@@ -565,4 +480,56 @@ async fn test_update_creates_install_dir_before_writing_script() {
         // Execute error (fake binary ran and failed) or Ok — both are fine.
         _ => {}
     }
+}
+#[tokio::test]
+#[serial]
+async fn test_create_game_server_from_template() {
+    configure_insta!();
+    let boot = boot_test::<App>().await.unwrap();
+
+    // Create a template with specific settings
+    let template = game_templates::ActiveModel::create(
+        &boot.app_context,
+        "Test Template".to_string(),
+        Some("Template for testing".to_string()),
+        730,
+        Some("my_mod".to_string()),
+        Some("dev".to_string()),
+        Some("echo hello".to_string()),
+        true,  // use_steam_login
+        true,  // auto_start
+        true,  // auto_restart
+        false, // auto_update
+        true,  // update_on_start
+        Some("0 3 * * *".to_string()),
+    )
+    .await
+    .expect("Failed to create template");
+
+    // Create a server from the template
+    let form = CreateServerForm {
+        app_id: "730".to_string(),
+        name: "Template Server".to_string(),
+        server_mod: None,
+        beta_branch: None,
+        use_steam_login: false,
+        steam_username: None,
+        steam_password: None,
+        template_id: Some(template.id),
+    };
+    let server = ActiveModel::create(&boot.app_context, &form, Some(&template))
+        .await
+        .expect("Failed to create game server from template");
+
+    // Verify template settings were applied
+    assert_eq!(server.template_id, Some(template.id));
+    assert_eq!(server.boot_script, Some("echo hello".to_string()));
+    assert!(server.auto_start);
+    assert!(server.auto_restart);
+    assert!(!server.auto_update);
+    assert!(server.update_on_start);
+    assert_eq!(server.restart_schedule, Some("0 3 * * *".to_string()));
+
+    // Verify form values take precedence over template for use_steam_login
+    assert!(!server.use_steam_login);
 }

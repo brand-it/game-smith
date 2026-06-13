@@ -1,0 +1,100 @@
+{% extends "_layout/base.html" %}
+
+{% block title %}{{ t(key="servers-new-title", lang="en-US") }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/servers/new" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
+    <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="servers-new-title", lang="en-US") }}</h1>
+</div>
+
+{% if error %}
+<div class="mb-5 bg-red-50 border border-red-200 rounded-lg p-4">
+    <p class="text-sm text-red-700 m-0">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="bg-white border border-gray-200 rounded-lg p-8 max-w-[560px]">
+    <form action="/servers" method="post" id="server_form">
+{% if template %}
+<input type="hidden" name="template_id" value="{{ template.id }}">
+{% endif %}
+        <div class="mb-5">
+            <label for="app_id" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-app-id", lang="en-US") }}</label>
+            <input type="text" name="app_id" id="app_id" required placeholder="730"
+                value="{% if form_data %}{{ form_data.app_id }}{% elif template %}{{ template.app_id }}{% endif %}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="servers-form-app-id-help", lang="en-US") }}</p>
+            <p class="mt-0.5 mb-0 text-xs text-slate-500">
+                {{ t(key="servers-form-app-id-link-text", lang="en-US") }}
+                <a href="https://steamdb.info/apps/" target="_blank" rel="noopener" class="text-blue-600 no-underline hover:underline">steamdb.info/apps</a>
+            </p>
+        </div>
+
+        <div class="mb-5">
+            <label for="name" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-name", lang="en-US") }}</label>
+            <input type="text" name="name" id="name" required placeholder="{{ t(key="servers-form-name-placeholder", lang="en-US") }}"
+                value="{% if form_data %}{{ form_data.name }}{% endif %}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+        </div>
+
+        <div class="mb-5">
+            <label for="server_mod" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-mod", lang="en-US") }}</label>
+            <input type="text" name="server_mod" id="server_mod" placeholder="{{ t(key="servers-form-mod-placeholder", lang="en-US") }}"
+                value="{% if form_data %}{{ form_data.server_mod | default(value='') }}{% elif template %}{{ template.server_mod | default(value='') }}{% endif %}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            <p class="mt-1 mb-0 text-xs text-slate-500">{{ t(key="servers-form-mod-help", lang="en-US") }}</p>
+        </div>
+
+        <div class="mb-7">
+            <label for="beta_branch" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-beta", lang="en-US") }}</label>
+            <input type="text" name="beta_branch" id="beta_branch" placeholder="{{ t(key="servers-form-beta-placeholder", lang="en-US") }}"
+                value="{% if form_data %}{{ form_data.beta_branch | default(value='') }}{% elif template %}{{ template.beta_branch | default(value='') }}{% endif %}"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+        </div>
+
+        <div class="mb-5 p-4 bg-slate-50 rounded-lg border border-gray-200">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
+                    {% if form_data and form_data.use_steam_login %}checked{% elif template and template.use_steam_login %}checked{% endif %}
+                    onchange="document.getElementById('steam_creds').classList.toggle('hidden', !this.checked)"
+                    class="w-4 h-4 accent-blue-600">
+                <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-use-steam-account", lang="en-US") }}</span>
+            </label>
+            <p class="mt-1.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-use-steam-account-help", lang="en-US") }}</p>
+        </div>
+
+        <div id="steam_creds" class="hidden mb-5 p-4 bg-sky-50 rounded-lg border border-sky-200">
+            <div class="mb-3">
+                <label for="steam_username" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-steam-username", lang="en-US") }}</label>
+                <input type="text" name="steam_username" id="steam_username" placeholder="{{ t(key="servers-form-steam-username-placeholder", lang="en-US") }}"
+                    value="{{ steam_username | default(value='') }}"
+                    class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            </div>
+            <div>
+                <label for="steam_password" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-steam-password", lang="en-US") }}</label>
+                <input type="password" name="steam_password" id="steam_password" placeholder="{{ t(key="servers-form-steam-password-placeholder", lang="en-US") }}"
+                    class="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                class="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg border-0 cursor-pointer transition-colors hover:bg-blue-700">
+                {{ t(key="servers-form-install", lang="en-US") }}
+            </button>
+            <a href="/servers" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+<script>
+// Show steam_creds if checkbox is checked on load (from template pre-fill)
+document.addEventListener('DOMContentLoaded', () => {
+    const steamLogin = document.getElementById('use_steam_login');
+    if (steamLogin && steamLogin.checked) {
+        document.getElementById('steam_creds').classList.remove('hidden');
+    }
+});
+</script>

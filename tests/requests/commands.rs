@@ -3,18 +3,14 @@ use game_smith::models::command_runs::CommandStatus;
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
 
-/// Verify that `GET /` renders the commands list page without template errors.
-/// This exercises the full rendering pipeline: base layout inheritance, macro
-/// imports, and the `t()` Fluent translation function.
+/// Verify that `GET /` redirects to the Game Servers list (`/servers`).
 #[tokio::test]
 #[serial]
-async fn root_renders_commands_list() {
+async fn root_redirects_to_servers() {
     request::<App, _, _>(|request, _ctx| async move {
         let response = request.get("/").await;
-        response.assert_status_success();
-
-        let body = response.text();
-        assert!(body.contains("Command Runs"));
+        response.assert_status(axum::http::StatusCode::SEE_OTHER);
+        assert_eq!(response.headers().get("location").unwrap(), "/servers");
     })
     .await;
 }

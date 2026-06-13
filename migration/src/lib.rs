@@ -9,6 +9,9 @@ mod m20260524_211537_create_game_servers;
 mod m20260525_000001_create_steam_credentials;
 mod m20260527_225027_add_use_steam_login;
 mod m20260606_164320_remove_pid_from_game_servers;
+mod m20260608_224254_create_game_templates;
+mod m20260611_160653_add_unique_constraints;
+mod m20260612_230509_add_template_id_to_game_servers;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -21,6 +24,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260525_000001_create_steam_credentials::Migration),
             Box::new(m20260527_225027_add_use_steam_login::Migration),
             Box::new(m20260606_164320_remove_pid_from_game_servers::Migration),
+            Box::new(m20260608_224254_create_game_templates::Migration),
+            Box::new(m20260611_160653_add_unique_constraints::Migration),
+            Box::new(m20260612_230509_add_template_id_to_game_servers::Migration),
             // inject-above (do not remove this comment)
         ]
     }

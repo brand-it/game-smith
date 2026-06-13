@@ -1,5 +1,6 @@
 use game_smith::app::App;
 use game_smith::models::command_runs::{ActiveModel, CommandStatus, Model as CommandRunModel};
+use game_smith::models::game_servers::{ActiveModel as GameServerActiveModel, CreateServerForm};
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
 
@@ -9,6 +10,19 @@ macro_rules! configure_insta {
         settings.set_prepend_module_to_snapshot(false);
         let _guard = settings.bind_to_scope();
     };
+}
+
+fn make_form(app_id: u32, name: &str) -> CreateServerForm {
+    CreateServerForm {
+        app_id: app_id.to_string(),
+        name: name.to_string(),
+        server_mod: None,
+        beta_branch: None,
+        use_steam_login: false,
+        steam_username: None,
+        steam_password: None,
+        template_id: None,
+    }
 }
 
 #[tokio::test]
@@ -395,19 +409,10 @@ async fn test_find_latest_by_server_empty() {
 
     let boot = boot_test::<App>().await.unwrap();
 
-    // Create a game server to associate runs with
-    let server = game_smith::models::game_servers::ActiveModel::create(
-        &boot.app_context,
-        730,
-        "Test Server".to_string(),
-        "/tmp/game-smith/games/test-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create game server");
+    let server =
+        GameServerActiveModel::create(&boot.app_context, &make_form(730, "Test Server"), None)
+            .await
+            .expect("Failed to create game server");
 
     let found = CommandRunModel::find_latest_by_server(&boot.app_context, server.id as i64)
         .await
@@ -423,19 +428,10 @@ async fn test_find_latest_by_server_returns_most_recent() {
 
     let boot = boot_test::<App>().await.unwrap();
 
-    // Create a game server
-    let server = game_smith::models::game_servers::ActiveModel::create(
-        &boot.app_context,
-        730,
-        "Test Server".to_string(),
-        "/tmp/game-smith/games/test-server".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create game server");
+    let server =
+        GameServerActiveModel::create(&boot.app_context, &make_form(730, "Test Server"), None)
+            .await
+            .expect("Failed to create game server");
 
     // Create first run (older)
     let first = ActiveModel::create_run(
@@ -484,33 +480,14 @@ async fn test_find_latest_by_server_filters_by_server() {
     configure_insta!();
 
     let boot = boot_test::<App>().await.unwrap();
-
-    // Create two different game servers
-    let server_a = game_smith::models::game_servers::ActiveModel::create(
-        &boot.app_context,
-        730,
-        "Server A".to_string(),
-        "/tmp/game-smith/games/server-a".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create server A");
-
-    let server_b = game_smith::models::game_servers::ActiveModel::create(
-        &boot.app_context,
-        740,
-        "Server B".to_string(),
-        "/tmp/game-smith/games/server-b".to_string(),
-        "linux".to_string(),
-        None,
-        None,
-        false,
-    )
-    .await
-    .expect("Failed to create server B");
+    let server_a =
+        GameServerActiveModel::create(&boot.app_context, &make_form(730, "Server A"), None)
+            .await
+            .expect("Failed to create server A");
+    let server_b =
+        GameServerActiveModel::create(&boot.app_context, &make_form(740, "Server B"), None)
+            .await
+            .expect("Failed to create server B");
 
     // Create run for server B only
     let run_b = ActiveModel::create_run(
