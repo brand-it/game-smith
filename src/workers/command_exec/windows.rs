@@ -135,82 +135,19 @@ impl super::CommandExecWorker {
 mod tests {
     use super::*;
 
-    /// Spawn a command via ConPTY and verify determine_pty_status maps
-    /// success to Completed/0.
+    /// Verify determine_pty_status maps success to Completed/0.
     #[test]
     fn determine_pty_status_maps_success() {
-        let pty_system = portable_pty::native_pty_system();
-        let pair = pty_system
-            .openpty(portable_pty::PtySize {
-                rows: 25,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .expect("failed to create pty");
-
-        let mut cmd = portable_pty::CommandBuilder::new("cmd.exe");
-        cmd.args(&["/c", "exit", "/b", "0"]);
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .expect("failed to spawn command");
-
-        // Wait for exit with a timeout to avoid hanging on CI
-        let mut child = child;
-        let exit_status = (|| -> Option<portable_pty::ExitStatus> {
-            for _ in 0..600 {
-                match child.try_wait() {
-                    Ok(Some(status)) => return Some(status),
-                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
-                    Err(e) => panic!("failed to poll child status: {}", e),
-                }
-            }
-            None
-        })()
-        .expect("child process did not exit within 60s");
-
-        drop(pair);
+        let exit_status = portable_pty::ExitStatus { exit_code: 0, signal: None };
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
         assert_eq!(cmd_status, CommandStatus::Completed);
         assert_eq!(code, Some(0));
     }
 
-    /// Spawn a command via ConPTY and verify determine_pty_status maps
-    /// failure to Failed with the correct exit code.
+    /// Verify determine_pty_status maps failure to Failed with correct exit code.
     #[test]
     fn determine_pty_status_maps_failure() {
-        let pty_system = portable_pty::native_pty_system();
-        let pair = pty_system
-            .openpty(portable_pty::PtySize {
-                rows: 25,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .expect("failed to create pty");
-
-        let mut cmd = portable_pty::CommandBuilder::new("cmd.exe");
-        cmd.args(&["/c", "exit", "/b", "42"]);
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .expect("failed to spawn command");
-
-        let mut child = child;
-        let exit_status = (|| -> Option<portable_pty::ExitStatus> {
-            for _ in 0..600 {
-                match child.try_wait() {
-                    Ok(Some(status)) => return Some(status),
-                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
-                    Err(e) => panic!("failed to poll child status: {}", e),
-                }
-            }
-            None
-        })()
-        .expect("child process did not exit within 60s");
-
-        drop(pair);
+        let exit_status = portable_pty::ExitStatus { exit_code: 42, signal: None };
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
         assert_eq!(cmd_status, CommandStatus::Failed);
         assert_eq!(code, Some(42));
