@@ -3,7 +3,7 @@
 {% block title %}{{ t(key="servers-new-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
+<div class="mb-3">
     <a href="/servers" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
     <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="servers-new-title", lang="en-US") }}</h1>
 </div>
@@ -11,7 +11,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[960px]">
     <!-- Create New Server Card -->
     <a href="/servers/new/form"
-        class="block bg-white border border-gray-200 rounded-lg p-6 transition-colors hover:border-blue-300 no-underline">
+        class="block bg-white border border-gray-200 rounded-lg p-4 transition-colors hover:border-blue-300 no-underline">
         <h2 class="text-lg font-semibold text-slate-900 mb-2">{{ t(key="servers-create-new-server", lang="en-US") }}</h2>
         <p class="text-sm text-slate-500 m-0">{{ t(key="servers-create-new-server-desc", lang="en-US") }}</p>
     </a>
@@ -19,7 +19,7 @@
     {% if has_templates %}
     <!-- Create from Template Card -->
     <a href="/servers/new/select-template"
-        class="block bg-white border border-gray-200 rounded-lg p-6 transition-colors hover:border-blue-300 no-underline">
+        class="block bg-white border border-gray-200 rounded-lg p-4 transition-colors hover:border-blue-300 no-underline">
         <h2 class="text-lg font-semibold text-slate-900 mb-2">{{ t(key="servers-create-from-template", lang="en-US") }}</h2>
         <p class="text-sm text-slate-500 m-0">{{ t(key="servers-create-from-template-desc", lang="en-US") }}</p>
     </a>

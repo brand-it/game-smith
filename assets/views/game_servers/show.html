@@ -19,7 +19,7 @@
 {% endif %}
 
 <!-- Header: back link + server name + status -->
-<div class="mb-6">
+<div class="mb-3">
     <a href="/servers"
         class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr;
         {{ t(key="servers-back", lang="en-US") }}</a>
@@ -30,15 +30,15 @@
 </div>
 
 <!-- 2-column layout: Server Settings (left) | Actions + Settings (right, stacked) -->
-<div class="grid grid-cols-2 gap-5 mb-5">
+<div class="grid grid-cols-2 gap-3 mb-5">
 
     <!-- ═══ Left column: Server Settings ═══ -->
-    <div class="bg-white border border-gray-200 rounded-lg p-6">
-        <h2 class="section-heading mb-4">{{ t(key="servers-edit-settings",
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <h2 class="section-heading mb-2">{{ t(key="servers-edit-settings",
             lang="en-US") }}</h2>
 
         {% if server.is_running %}
-        <p class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
+        <p class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
             {{ t(key="servers-running-locked", lang="en-US") }}
         </p>
         {% endif %}
@@ -46,7 +46,7 @@
         <form action="/servers/{{ server.id }}/settings" method="post">
 
             <!-- App ID (read-only) -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="app_id"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-app-id", lang="en-US") }}</label>
@@ -55,7 +55,7 @@
             </div>
 
             <!-- Server Name -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="name"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-name", lang="en-US") }}</label>
@@ -67,7 +67,7 @@
             </div>
 
             <!-- Platform (read-only) -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="platform"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-platform", lang="en-US") }}</label>
@@ -76,7 +76,7 @@
             </div>
 
             <!-- Install Directory -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="install_dir"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-install-dir", lang="en-US") }}</label>
@@ -88,7 +88,7 @@
             </div>
 
             <!-- Server Mod -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="server_mod"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-mod", lang="en-US") }}</label>
@@ -99,7 +99,7 @@
             </div>
 
             <!-- Beta Branch -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="beta_branch"
                     class="block text-sm font-medium text-slate-700 mb-1.5">{{
                     t(key="servers-beta-branch", lang="en-US") }}</label>
@@ -110,7 +110,7 @@
             </div>
 
             <!-- Login Mode -->
-            <div class="mb-5">
+            <div class="mb-3">
                 <label
                     class="flex items-center gap-2 {% if server.is_running or not has_steam_creds %}cursor-not-allowed{% else %}cursor-pointer{% endif %}">
                     <input type="checkbox" name="use_steam_login"
@@ -138,7 +138,7 @@
 
             <!-- Last Error -->
             {% if server.last_error %}
-            <div class="mb-4 p-2 bg-red-50 rounded">
+            <div class="mb-3 p-2 bg-red-50 rounded">
                 <dt class="text-xs text-slate-400 mb-0.5">{{
                     t(key="servers-last-error", lang="en-US") }}</dt>
                 <dd class="text-sm text-red-600 m-0">{{ server.last_error
@@ -158,11 +158,11 @@
     </div>
 
     <!-- ═══ Right column: Actions + Settings ═══ -->
-    <div class="flex flex-col gap-5">
+    <div class="flex flex-col gap-3">
 
         <!-- Actions -->
-        <div class="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 class="section-heading mb-4">{{ t(key="servers-actions",
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+            <h2 class="section-heading mb-2">{{ t(key="servers-actions",
                 lang="en-US") }}</h2>
             <div class="flex flex-col gap-2">
 
@@ -225,7 +225,7 @@
         </div>
 
         <!-- Settings (auto-start / auto-restart) -->
-        <div class="bg-white border border-gray-200 rounded-lg p-6 h-full">
+        <div class="bg-white border border-gray-200 rounded-lg p-4 h-full">
             <h2 class="section-heading mb-1">{{ t(key="servers-settings",
                 lang="en-US") }}</h2>
             <p class="text-sm text-slate-500 m-0 mb-3">{{
@@ -267,7 +267,7 @@
 </div>
 
 <!-- ═══ Boot Script ═══ -->
-<div class="bg-white border border-gray-200 rounded-lg p-6">
+<div class="bg-white border border-gray-200 rounded-lg p-4">
     <h2 class="section-heading mb-1">{{ t(key="servers-boot-script",
         lang="en-US") }}</h2>
     <p class="text-sm text-slate-500 m-0 mb-3">{{
@@ -288,7 +288,7 @@
 
 <!-- ═══ Command Output ═══ -->
 {% if latest_run %}
-<div class="mt-5 bg-white border border-gray-200 rounded-lg p-6">
+<div class="bg-white border border-gray-200 rounded-lg p-4">
     <h2 class="section-heading mb-1">{{ t(key="servers-command-output",
         lang="en-US") }}</h2>
     <p class="text-sm text-slate-500 m-0 mb-3">{{

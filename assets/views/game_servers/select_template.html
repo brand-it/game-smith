@@ -3,7 +3,7 @@
 {% block title %}{{ t(key="servers-select-template-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
+<div class="mb-3">
     <a href="/servers/new" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="servers-back", lang="en-US") }}</a>
     <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ t(key="servers-select-template-title", lang="en-US") }}</h1>
     <p class="text-sm text-slate-500 mt-2 m-0">{{ t(key="servers-select-template-subtitle", lang="en-US") }}</p>
@@ -12,7 +12,7 @@
 {% if templates|length > 0 %}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[960px]">
     {% for template in templates %}
-    <div class="bg-white border border-gray-200 rounded-lg p-6 flex flex-col">
+    <div class="bg-white border border-gray-200 rounded-lg p-4 flex flex-col">
         <div class="flex-1">
             <h2 class="text-lg font-semibold text-slate-900 mb-1">{{ template.name }}</h2>
             {% if template.description %}
@@ -53,7 +53,7 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="bg-white border border-gray-200 rounded-lg p-16 text-center">
+<div class="bg-white border border-gray-200 rounded-lg p-8 text-center">
     <p class="text-slate-500 m-0 mb-4">{{ t(key="servers-select-template-empty", lang="en-US") }}</p>
     <a href="/templates/new"
         class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">

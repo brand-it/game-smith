@@ -106,7 +106,7 @@ pub async fn select_template(
 /// POST /servers — create a new game server and start installation.
 ///
 /// Creates the game server record, kicks off the `SteamCMD` installation,
-/// and redirects to the command detail page where progress is streamed.
+/// and redirects to the game server show page where installation progress is displayed.
 ///
 /// # Errors
 /// Returns a [`StandardError`] if validation fails, the record cannot be
@@ -222,7 +222,7 @@ pub async fn create(
 
     // Start installation
     let installer = GameServerInstaller::new(&ctx);
-    let run = installer.install(&server).await.map_err(|e| {
+    let _run = installer.install(&server).await.map_err(|e| {
         StandardError::InternalServerError(format!("failed to start installation: {e}"))
     })?;
 
@@ -238,8 +238,8 @@ pub async fn create(
         );
     }
 
-    // Redirect to command detail page
-    Ok(Redirect::to(&format!("/commands/{}", run.id)).into_response())
+    // Redirect to server show page
+    Ok(Redirect::to(&format!("/servers/{}", server.id)).into_response())
 }
 
 /// GET /servers/:id — show game server details.

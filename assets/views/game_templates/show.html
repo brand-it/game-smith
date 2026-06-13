@@ -3,25 +3,25 @@
 {% block title %}{{ template.name }} — {{ t(key="templates-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
+<div class="mb-3">
     <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="templates-back", lang="en-US") }}</a>
     <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ template.name }}</h1>
 {% if error %}
-<div class="mb-5 bg-red-50 border border-red-200 rounded-lg p-4">
+<div class="mb-3 bg-red-50 border border-red-200 rounded-lg p-4">
     <p class="text-sm text-red-700 m-0">{{ error }}</p>
 </div>
 {% endif %}
 
 <!-- 2-column layout: Form (left) | Export + Delete (right) -->
-<div class="grid grid-cols-2 gap-5 mb-5">
+<div class="grid grid-cols-2 gap-3 mb-5">
 
     <!-- ═══ Left column: Editable Form ═══ -->
-    <div class="bg-white border border-gray-200 rounded-lg p-6">
-        <h2 class="section-heading mb-4">{{ t(key="templates-edit-settings", lang="en-US") }}</h2>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+        <h2 class="section-heading mb-2">{{ t(key="templates-edit-settings", lang="en-US") }}</h2>
 
         <form action="/templates/{{ template.id }}" method="post">
             <!-- Name + App ID -->
-            <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="grid grid-cols-2 gap-4 mb-3">
                 <div>
                     <label for="name" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-name", lang="en-US") }}</label>
                     <input type="text" name="name" id="name" required
@@ -37,14 +37,14 @@
             </div>
 
             <!-- Description -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="description" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-description", lang="en-US") }}</label>
                 <textarea name="description" id="description" rows="2"
                     class="form-textarea">{% if form_data %}{{ form_data.description | default(value="") }}{% else %}{{ template.description | default(value="") }}{% endif %}</textarea>
             </div>
 
             <!-- Server Mod + Beta Branch -->
-            <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="grid grid-cols-2 gap-4 mb-3">
                 <div>
                     <label for="server_mod" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-mod", lang="en-US") }}</label>
                     <input type="text" name="server_mod" id="server_mod"
@@ -60,7 +60,7 @@
             </div>
 
             <!-- Boot Script -->
-            <div class="mb-4">
+            <div class="mb-3">
                 <label for="boot_script" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-boot-script", lang="en-US") }}</label>
                 <textarea name="boot_script" id="boot_script" rows="3"
                     class="form-textarea">{% if form_data %}{{ form_data.boot_script | default(value="") }}{% else %}{{ template.boot_script | default(value="") }}{% endif %}</textarea>
@@ -68,7 +68,7 @@
             </div>
 
             <!-- Use Steam Login -->
-            <div class="mb-4 p-4 bg-slate-50 rounded-lg border border-gray-200">
+            <div class="mb-3 p-4 bg-slate-50 rounded-lg border border-gray-200">
                 <div class="flex items-center gap-2">
                     <label class="toggle">
                         <input type="checkbox" name="use_steam_login" id="use_steam_login" value="true"
@@ -83,7 +83,7 @@
 
             <!-- Auto Settings -->
             <h2 class="section-heading mb-3">{{ t(key="templates-auto-settings", lang="en-US") }}</h2>
-            <div class="mb-4">
+            <div class="mb-3">
                 <div class="mb-3 flex items-center gap-2">
                     <label class="toggle">
                         <input type="checkbox" name="auto_start" id="auto_start" value="true"
@@ -123,7 +123,7 @@
             </div>
 
             <!-- Restart Schedule -->
-            <div class="mb-5">
+            <div class="mb-3">
                 <label for="restart_schedule" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="templates-form-restart-schedule", lang="en-US") }}</label>
                 <input type="text" name="restart_schedule" id="restart_schedule" placeholder="0 4 * * *"
                     value="{% if form_data %}{{ form_data.restart_schedule | default(value='') }}{% else %}{{ template.restart_schedule | default(value="") }}{% endif %}"
@@ -141,9 +141,9 @@
     </div>
 
     <!-- ═══ Right column: Export + Delete ═══ -->
-    <div class="flex flex-col gap-5">
+    <div class="flex flex-col gap-3">
         <!-- Export -->
-        <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
             <h2 class="section-heading mb-3">{{ t(key="templates-export", lang="en-US") }}</h2>
             <p class="text-sm text-slate-500 m-0 mb-3">{{ t(key="templates-export-help", lang="en-US") }}</p>
             <div class="relative">
@@ -157,7 +157,7 @@
         </div>
 
         <!-- Actions -->
-        <div class="bg-white border border-gray-200 rounded-lg p-6">
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
             <h2 class="section-heading mb-3">{{ t(key="templates-actions", lang="en-US") }}</h2>
             <form action="/templates/{{ template.id }}/delete" method="post" class="m-0"
                 onsubmit="return confirm('{{ t(key="templates-delete-confirm", lang="en-US") }}')">

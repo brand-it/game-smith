@@ -4,7 +4,7 @@
 {% block title %}{{ t(key="servers-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-3">
     <h1 class="text-2xl font-bold text-slate-900 m-0">{{ t(key="servers-title", lang="en-US") }}</h1>
     <a href="/servers/new"
         class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
@@ -41,7 +41,7 @@
     </table>
 </div>
 {% else %}
-<div class="bg-white border border-gray-200 rounded-lg p-16 text-center">
+<div class="bg-white border border-gray-200 rounded-lg p-8 text-center">
     <p class="text-slate-500 m-0 mb-4">{{ t(key="servers-empty", lang="en-US") }}</p>
     <a href="/servers/new"
         class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
