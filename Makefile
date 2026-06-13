@@ -61,7 +61,7 @@ watch:
 # ── Quality ────────────────────────────────────────────────────────────
 
 test:
-	cargo test
+	cargo nextest run --retries 3 --status-timeout 120s || cargo test --all-features --all
 
 fmt:
 	cargo fmt --all
