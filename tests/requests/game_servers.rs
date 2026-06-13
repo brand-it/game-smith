@@ -134,7 +134,7 @@ async fn servers_show_renders() {
             "Server name should appear"
         );
         assert!(body.contains("740"), "App ID should appear");
-        assert!(body.contains("linux"), "Platform should appear");
+        assert!(body.contains(std::env::consts::OS), "Platform should appear");
     })
     .await;
 }
