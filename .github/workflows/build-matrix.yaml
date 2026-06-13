@@ -25,7 +25,7 @@ jobs:
             test-cmd: cargo nextest run --retries 3
             artifact-name: game-smith-windows
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
