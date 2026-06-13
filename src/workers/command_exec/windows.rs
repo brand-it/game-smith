@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io;
-use tokio::process::Command;
 
 use portable_pty;
 
@@ -138,10 +137,7 @@ mod tests {
     /// Verify determine_pty_status maps success to Completed/0.
     #[test]
     fn determine_pty_status_maps_success() {
-        let exit_status = portable_pty::ExitStatus {
-            exit_code: 0,
-            signal: None,
-        };
+        let exit_status = portable_pty::ExitStatus::with_exit_code(0);
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
         assert_eq!(cmd_status, CommandStatus::Completed);
         assert_eq!(code, Some(0));
@@ -150,10 +146,7 @@ mod tests {
     /// Verify determine_pty_status maps failure to Failed with correct exit code.
     #[test]
     fn determine_pty_status_maps_failure() {
-        let exit_status = portable_pty::ExitStatus {
-            exit_code: 42,
-            signal: None,
-        };
+        let exit_status = portable_pty::ExitStatus::with_exit_code(42);
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
         assert_eq!(cmd_status, CommandStatus::Failed);
         assert_eq!(code, Some(42));
