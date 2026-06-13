@@ -39,6 +39,7 @@ pub fn extract(steamcmd_dir: &Path, temp_path: &Path) -> Result<(), super::Steam
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     /// Verify extract() successfully unpacks a zip archive and cleans up.
     #[test]
