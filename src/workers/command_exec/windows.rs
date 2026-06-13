@@ -156,15 +156,19 @@ mod tests {
             .spawn_command(cmd)
             .expect("failed to spawn command");
 
-        // Wait for exit (polling loop to avoid blocking)
+        // Wait for exit with a timeout to avoid hanging on CI
         let mut child = child;
-        let exit_status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
-                Err(_) => panic!("failed to poll child status"),
+        let exit_status = (|| -> Option<portable_pty::ExitStatus> {
+            for _ in 0..600 {
+                match child.try_wait() {
+                    Ok(Some(status)) => return Some(status),
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    Err(e) => panic!("failed to poll child status: {}", e),
+                }
             }
-        };
+            None
+        })()
+        .expect("child process did not exit within 60s");
 
         drop(pair);
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
@@ -194,13 +198,17 @@ mod tests {
             .expect("failed to spawn command");
 
         let mut child = child;
-        let exit_status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
-                Err(_) => panic!("failed to poll child status"),
+        let exit_status = (|| -> Option<portable_pty::ExitStatus> {
+            for _ in 0..600 {
+                match child.try_wait() {
+                    Ok(Some(status)) => return Some(status),
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    Err(e) => panic!("failed to poll child status: {}", e),
+                }
             }
-        };
+            None
+        })()
+        .expect("child process did not exit within 60s");
 
         drop(pair);
         let (cmd_status, code) = super::super::CommandExecWorker::determine_pty_status(exit_status);
