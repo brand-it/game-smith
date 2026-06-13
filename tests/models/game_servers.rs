@@ -44,7 +44,7 @@ async fn test_create_game_server() {
     assert_eq!(model.status(), ServerStatus::Pending);
     assert_eq!(model.app_id, 730);
     assert_eq!(model.name, "My CS2 Server");
-    assert_eq!(model.platform, "linux");
+    assert_eq!(model.platform, std::env::consts::OS);
     assert!(!model.auto_start);
     assert!(!model.auto_restart);
     assert!(!model.auto_update);
