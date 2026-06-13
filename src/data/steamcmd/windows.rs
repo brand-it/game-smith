@@ -55,7 +55,7 @@ mod tests {
             let zip_file = std::fs::File::create(&zip_path).expect("failed to create zip file");
             let mut archive = zip::ZipWriter::new(zip_file);
             archive
-                .start_file("steamcmd.exe", zip::write::FileOptions::default())
+                .start_file("steamcmd.exe", zip::write::FileOptions::<()>::default())
                 .expect("failed to start file");
             archive
                 .write_all(b"FAKE\x00")
