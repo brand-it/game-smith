@@ -102,7 +102,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
       - name: Run tests
-        run: xvfb-run cargo nextest run --retries 3 --status-timeout 120s
+        run: xvfb-run cargo nextest run --retries 3 --timeout 120s
 
   version-check:
     name: Check Version Sync
