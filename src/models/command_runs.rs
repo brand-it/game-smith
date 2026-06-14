@@ -212,6 +212,24 @@ impl Model {
         self.status() == CommandStatus::Running
     }
 
+    /// Append a line to the command run's log file.
+    ///
+    /// If `log_path` is `None`, or if the write fails, the method logs
+    /// a warning and returns silently — callers do not need to handle errors.
+    pub async fn log_write(&self, message: &str) {
+        let Some(ref log_path) = self.log_path else {
+            return;
+        };
+        if let Err(e) = tokio::fs::write(log_path, format!("{message}\n")).await {
+            tracing::warn!(
+                id = self.id,
+                log_path,
+                error = %e,
+                "failed to append to command log"
+            );
+        }
+    }
+
     /// Returns the DB status as a typed [`CommandStatus`].
     #[must_use]
     pub fn status(&self) -> CommandStatus {

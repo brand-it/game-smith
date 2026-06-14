@@ -8,14 +8,12 @@ use crate::data::steamcmd::{health_status, SteamCmd, SteamCmdHealthStatus};
 use crate::models::command_runs::{ActiveModel as CommandRunActiveModel, Model as CommandRunModel};
 use crate::workers::steamcmd_install::{SteamCmdInstallWorker, SteamCmdInstallWorkerArgs};
 use crate::{resolve_data_home, AppDirs};
-
 /// GET /steamcmd — check installation status and show install prompt.
 ///
 /// Reads the health status from the shared store and queries the last
 /// health check record for historical context.
 ///
 /// # Errors
-/// Returns a [`loco_rs::Error`] if rendering fails.
 pub async fn check_status(
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,

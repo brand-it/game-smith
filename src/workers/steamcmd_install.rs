@@ -28,19 +28,24 @@ impl SteamCmdInstallWorker {
     async fn run_install(&self, run_id: i32) {
         let data_home = resolve_data_home();
         let dirs = AppDirs::new(data_home);
-        let steamcmd = SteamCmd::new(&dirs);
 
-        // Write progress to log file if available
-        if let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
-            if let Some(ref log_path) = model.log_path {
-                if let Err(e) =
-                    tokio::fs::write(log_path, "Starting SteamCMD installation...\n").await
-                {
-                    tracing::warn!(run_id, log_path, error = %e, "failed to write install start marker to log");
-                }
+        // Fetch the model for logging and DB updates
+        let model = match CommandRunModel::find_by_id(&self.ctx, run_id).await {
+            Ok(Some(m)) => m,
+            Ok(None) => {
+                error!(run_id, "SteamCMD install run not found in DB");
+                return;
             }
-        }
+            Err(e) => {
+                error!(run_id, error = %e, "failed to fetch SteamCMD install run from DB");
+                return;
+            }
+        };
 
+        // Write progress to log file
+        model.log_write("Starting SteamCMD installation...").await;
+
+        let mut steamcmd = SteamCmd::new(&dirs).with_command_run(model);
         let result = steamcmd.install().await;
 
         match result {
@@ -51,8 +56,8 @@ impl SteamCmdInstallWorker {
                 set_shared_store(&self.ctx.shared_store);
                 self.ctx.shared_store.insert(SteamCmdHealthStatus::Healthy);
 
-                // Mark run as completed
-                if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
+                // Reclaim model from steamcmd to mark run as completed
+                if let Some(m) = steamcmd.take_model() {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
                     if let Err(e) = active
                         .finish(&self.ctx, Some(0), CommandStatus::Completed)
@@ -65,19 +70,12 @@ impl SteamCmdInstallWorker {
             Err(e) => {
                 error!(error = %e, "SteamCMD installation failed");
 
-                // Write error to log file if available
-                if let Ok(Some(model)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
-                    if let Some(ref log_path) = model.log_path {
-                        if let Err(e) =
-                            tokio::fs::write(log_path, format!("Installation failed: {e}\n")).await
-                        {
-                            tracing::warn!(run_id, log_path, error = %e, "failed to write install failure to log");
-                        }
-                    }
+                if let Some(m) = steamcmd.model() {
+                    m.log_write(&format!("Installation failed: {e}")).await;
                 }
 
-                // Mark run as failed
-                if let Ok(Some(m)) = CommandRunModel::find_by_id(&self.ctx, run_id).await {
+                // Reclaim model from steamcmd to mark run as failed
+                if let Some(m) = steamcmd.take_model() {
                     let mut active: crate::models::command_runs::ActiveModel = m.into();
                     if let Err(e) = active
                         .finish(&self.ctx, Some(1), CommandStatus::Failed)

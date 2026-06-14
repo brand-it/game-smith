@@ -36,9 +36,20 @@ pub fn extract(steamcmd_dir: &Path, temp_path: &Path) -> Result<(), super::Steam
     Ok(())
 }
 
+/// Attempt to install SteamCMD dependencies on Windows.
+impl super::SteamCmd {
+    /// Windows does not require additional 32-bit libraries for SteamCMD.
+    /// This function exists for API parity with the Linux implementation so
+    /// [`super::SteamCmd::install`] can call it without platform-specific branching.
+    pub(super) async fn try_install_dependencies(&self) {
+        // No dependencies to install on Windows
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::log_result;
     use std::io::Write;
 
     /// Verify extract() successfully unpacks a zip archive and cleans up.
@@ -75,6 +86,39 @@ mod tests {
         );
         assert!(!zip_path.exists(), "temp file should be cleaned up");
 
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        log_result(
+            std::fs::remove_dir_all(&temp_dir),
+            &format!("cleaned up temp dir {}", temp_dir.display()),
+            &format!("failed to clean up temp dir {}", temp_dir.display()),
+        );
+    }
+
+    /// Verify try_install_dependencies() is callable and returns immediately (no-op on Windows).
+    #[tokio::test]
+    async fn try_install_dependencies_returns_immediately() {
+        let temp_dir = std::env::temp_dir().join(format!("game-smith-test-{}", std::process::id()));
+        log_result(
+            std::fs::remove_dir_all(&temp_dir),
+            &format!("cleaned up pre-existing temp dir {}", temp_dir.display()),
+            &format!(
+                "failed to clean up pre-existing temp dir {}",
+                temp_dir.display()
+            ),
+        );
+        std::fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+
+        let steamcmd = super::super::SteamCmd {
+            steamcmd_dir: temp_dir.clone(),
+            binary_path: temp_dir.join(BINARY_NAME),
+            model: None,
+        };
+
+        steamcmd.try_install_dependencies().await;
+
+        log_result(
+            std::fs::remove_dir_all(&temp_dir),
+            &format!("cleaned up temp dir {}", temp_dir.display()),
+            &format!("failed to clean up temp dir {}", temp_dir.display()),
+        );
     }
 }

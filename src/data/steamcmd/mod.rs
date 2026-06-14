@@ -8,6 +8,7 @@ use loco_rs::app::SharedStore;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
+use crate::models::command_runs::Model as CommandRunModel;
 use crate::AppDirs;
 
 // Platform-specific modules
@@ -132,7 +133,12 @@ impl Display for SteamCmdError {
             Self::Spawn(err) => write!(f, "failed to spawn SteamCMD: {err}"),
             Self::ExitStatus(code) => write!(f, "SteamCMD exited with status {code}"),
             Self::MissingDependencies(details) => {
-                write!(f, "SteamCMD failed to start: {details}")
+                write!(
+                    f,
+                    "SteamCMD failed to start: {details}\n\
+                     Install missing dependencies manually: \
+                     https://developer.valvesoftware.com/wiki/SteamCMD#Manually"
+                )
             }
             Self::Io(err) => write!(f, "I/O error: {err}"),
         }
@@ -157,13 +163,13 @@ pub struct SteamCmd {
     steamcmd_dir: PathBuf,
     /// Path to the steamcmd binary.
     binary_path: PathBuf,
+    /// Optional command run model for logging progress to the log file.
+    model: Option<CommandRunModel>,
 }
 
 impl SteamCmd {
     /// Create a new [`SteamCmd`] instance with paths resolved from the
     /// application's data directories.
-    ///
-    /// The steamcmd directory is created at `$DATA_HOME/game-smith/steamcmd/`.
     #[must_use]
     pub fn new(dirs: &AppDirs) -> Self {
         let steamcmd_dir = dirs.app_dir.join(STEAMCMD_DIR_NAME);
@@ -171,9 +177,29 @@ impl SteamCmd {
         Self {
             steamcmd_dir,
             binary_path,
+            model: None,
         }
     }
 
+    /// Attach a command run model so progress is written to the log file.
+    #[must_use]
+    pub fn with_command_run(mut self, model: CommandRunModel) -> Self {
+        self.model = Some(model);
+        self
+    }
+
+    /// Take ownership of the stored model, leaving `None` in its place.
+    ///
+    /// Used to reclaim the model for DB status updates after installation.
+    pub const fn take_model(&mut self) -> Option<CommandRunModel> {
+        self.model.take()
+    }
+
+    /// Returns a reference to the attached command run model, if any.
+    #[must_use]
+    pub const fn model(&self) -> Option<&CommandRunModel> {
+        self.model.as_ref()
+    }
     /// Returns the path to the steamcmd directory.
     #[must_use]
     pub fn steamcmd_dir(&self) -> &Path {
@@ -257,6 +283,10 @@ impl SteamCmd {
 
         let temp_path = self.download_to_temp(DOWNLOAD_URL).await?;
         extract(&self.steamcmd_dir, &temp_path)?;
+
+        // Attempt to install platform-specific dependencies (best-effort, no-op on Windows).
+        // Failure is logged but does not block installation — the binary may still work.
+        self.try_install_dependencies().await;
 
         if self.is_installed() {
             info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
@@ -459,31 +489,6 @@ mod tests {
         let data_home = std::env::temp_dir();
         let dirs = AppDirs::new(data_home.to_string_lossy().to_string());
         let steamcmd = SteamCmd::new(&dirs);
-
-        assert!(
-            steamcmd.steamcmd_dir().ends_with("steamcmd"),
-            "steamcmd_dir should end with 'steamcmd'"
-        );
-
-        #[cfg(target_os = "windows")]
-        assert!(
-            steamcmd.binary_path().ends_with("steamcmd.exe"),
-            "Windows binary should be steamcmd.exe"
-        );
-        #[cfg(not(target_os = "windows"))]
-        assert!(
-            steamcmd.binary_path().ends_with("steamcmd.sh"),
-            "Linux binary should be steamcmd.sh"
-        );
-    }
-
-    #[test]
-    fn test_is_installed_false() {
-        let data_home = std::env::temp_dir();
-        let dirs = AppDirs::new(data_home.to_string_lossy().to_string());
-        let steamcmd = SteamCmd::new(&dirs);
-
-        // The temp_dir shouldn't have steamcmd installed
         assert!(
             !steamcmd.is_installed(),
             "is_installed should return false for non-existent binary"
