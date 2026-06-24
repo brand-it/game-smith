@@ -137,18 +137,18 @@ impl CommandExecWorker {
         if !Self::is_health_check(&model) {
             return;
         }
-
         let status = match (final_status, exit_code) {
             (CommandStatus::Completed, Some(0)) => SteamCmdHealthStatus::Healthy,
-            (CommandStatus::Failed, _) => model
-                .log_path
-                .as_ref()
-                .and_then(|log_path| std::fs::read_to_string(log_path).ok())
-                .and_then(|content| content.lines().last().map(String::from))
-                .map_or_else(
-                    || SteamCmdHealthStatus::Broken("health check failed".to_string()),
-                    SteamCmdHealthStatus::Broken,
-                ),
+            (CommandStatus::Failed, _) => {
+                let raw_msg = model
+                    .log_path
+                    .as_ref()
+                    .and_then(|log_path| std::fs::read_to_string(log_path).ok())
+                    .and_then(|content| content.lines().last().map(String::from))
+                    .unwrap_or_else(|| "health check failed".to_string());
+
+                SteamCmdHealthStatus::Broken(raw_msg)
+            }
             _ => SteamCmdHealthStatus::Broken("health check failed".to_string()),
         };
 
@@ -631,7 +631,7 @@ mod tests {
         let mut replies: Vec<u8> = Vec::new();
         let mut log: Vec<u8> = Vec::new();
 
-        // Feed in two-byte chunks.
+        // Feed in two-byte chunks
         struct TwoBytes<'a> {
             data: &'a [u8],
             pos: usize,

@@ -15,6 +15,7 @@ pub const fn default_false() -> bool {
 }
 
 /// Form data for creating a new game server.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Deserialize)]
 pub struct CreateServerForm {
     pub app_id: String,
@@ -26,6 +27,16 @@ pub struct CreateServerForm {
     pub steam_username: Option<String>,
     pub steam_password: Option<String>,
     pub template_id: Option<i32>,
+    pub boot_script: Option<String>,
+    #[serde(default = "default_false")]
+    pub auto_start: bool,
+    #[serde(default = "default_false")]
+    pub auto_restart: bool,
+    #[serde(default = "default_false")]
+    pub auto_update: bool,
+    #[serde(default = "default_false")]
+    pub update_on_start: bool,
+    pub restart_schedule: Option<String>,
 }
 
 /// Validation rules for [`ActiveModel`].
@@ -283,26 +294,36 @@ impl ActiveModel {
         let beta_branch = form.beta_branch.clone().filter(|s| !s.trim().is_empty());
         let use_steam_login = form.use_steam_login;
 
-        // Extract template settings or use defaults
-        let (
-            template_id,
-            boot_script,
-            auto_start,
-            auto_restart,
-            auto_update,
-            update_on_start,
-            restart_schedule,
-        ) = template.map_or((None, None, false, false, false, false, None), |t| {
-            (
-                Some(t.id),
-                t.boot_script.clone(),
-                t.auto_start,
-                t.auto_restart,
-                t.auto_update,
-                t.update_on_start,
-                t.restart_schedule.clone(),
-            )
-        });
+        // Extract settings: form values take precedence, template is fallback
+        let boot_script = form
+            .boot_script
+            .clone()
+            .or_else(|| template.and_then(|t| t.boot_script.clone()));
+        let auto_start = if form.auto_start {
+            true
+        } else {
+            template.is_some_and(|t| t.auto_start)
+        };
+        let auto_restart = if form.auto_restart {
+            true
+        } else {
+            template.is_some_and(|t| t.auto_restart)
+        };
+        let auto_update = if form.auto_update {
+            true
+        } else {
+            template.is_some_and(|t| t.auto_update)
+        };
+        let update_on_start = if form.update_on_start {
+            true
+        } else {
+            template.is_some_and(|t| t.update_on_start)
+        };
+        let restart_schedule = form
+            .restart_schedule
+            .clone()
+            .or_else(|| template.and_then(|t| t.restart_schedule.clone()));
+        let template_id = form.template_id.or_else(|| template.map(|t| t.id));
 
         let now = chrono::Utc::now();
         let record = Self {

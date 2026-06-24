@@ -9,7 +9,7 @@ use loco_rs::prelude::*;
 use serde::Deserialize;
 
 use crate::data::encryption::EncryptionKey;
-use crate::data::game_server_installer::GameServerInstaller;
+use crate::data::game_server_installer::{GameServerError, GameServerInstaller};
 use crate::models::game_servers;
 use crate::models::game_servers::CreateServerForm;
 use crate::models::game_servers::ServerStatus;
@@ -222,9 +222,23 @@ pub async fn create(
 
     // Start installation
     let installer = GameServerInstaller::new(&ctx);
-    let _run = installer.install(&server).await.map_err(|e| {
-        StandardError::InternalServerError(format!("failed to start installation: {e}"))
-    })?;
+    let install_result = installer.install(&server).await;
+
+    // Execute errors mean the worker was dispatched but failed to spawn.
+    // The worker handles this asynchronously (marks run as failed), so we
+    // redirect to the server show page where the user can see the error status.
+    match install_result {
+        Ok(_) => {}
+        Err(GameServerError::Execute(e)) => {
+            tracing::warn!(server_id = server.id, error = %e, "install worker failed to execute");
+            return Ok(Redirect::to(&format!("/servers/{}", server.id)).into_response());
+        }
+        Err(e) => {
+            return Err(StandardError::InternalServerError(format!(
+                "failed to start installation: {e}"
+            )));
+        }
+    }
 
     // Update server status to installing
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, server.id).await {
@@ -324,10 +338,23 @@ pub async fn update_server(
     }
 
     let installer = GameServerInstaller::new(&ctx);
-    let _run = installer
-        .update(&server)
-        .await
-        .map_err(|e| StandardError::InternalServerError(format!("failed to update server: {e}")))?;
+    let update_result = installer.update(&server).await;
+
+    // Execute errors mean the worker was dispatched but failed to spawn.
+    // The worker handles this asynchronously (marks run as failed), so we
+    // redirect to the server show page where the user can see the error status.
+    let _run = match update_result {
+        Ok(run) => run,
+        Err(GameServerError::Execute(e)) => {
+            tracing::warn!(server_id = id, error = %e, "update worker failed to execute");
+            return Ok(Redirect::to(&format!("/servers/{id}")).into_response());
+        }
+        Err(e) => {
+            return Err(StandardError::InternalServerError(format!(
+                "failed to update server: {e}"
+            )));
+        }
+    };
 
     // Update server status
     if let Ok(Some(active_server)) = game_servers::Model::find_by_id(&ctx, id).await {

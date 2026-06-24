@@ -2,6 +2,6 @@
 dir = ".nextest"
 
 [profile.default]
-status-timeout = "120s"
+slow-timeout = "120s"
 failure-output = "immediate"
 test-threads = 1

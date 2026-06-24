@@ -87,41 +87,101 @@ confirm() {
 
 install_packages() {
     if [[ "$USE_BREW" == true ]]; then
-        info "Installing via Homebrew (no root required)..."
-        brew install $REQUIRED_PACKAGES || {
-            error "Failed to install packages via brew."
-            exit 1
-        }
+        install_brew_packages
     else
-        local pkg_mgr=""
-        case "$OS_TYPE" in
-            fedora)   pkg_mgr="sudo dnf install -y" ;;
-            debian)   pkg_mgr="sudo apt install -y" ;;
-            arch)     pkg_mgr="sudo pacman -S --noconfirm" ;;
-            suse)     pkg_mgr="sudo zypper install -y" ;;
-            *)        return ;;
-        esac
-
-        local cmd="$pkg_mgr $REQUIRED_PACKAGES"
-        if confirm "$cmd"; then
-            eval "$cmd" || {
-                error "Package installation failed."
-                exit 1
-            }
-        else
-            warn "Skipped package installation."
-            warn "Install manually and run this script again:"
-            echo "  $cmd"
-            exit 1
-        fi
+        install_system_packages
     fi
 }
 
+install_brew_packages() {
+    local packages_to_install=()
+
+    for pkg in $REQUIRED_PACKAGES; do
+        if ! brew list --formula "$pkg" &>/dev/null; then
+            packages_to_install+=("$pkg")
+        fi
+    done
+
+    if [[ ${#packages_to_install[@]} -eq 0 ]]; then
+        info "All Homebrew packages already installed."
+        return 0
+    fi
+
+    info "Installing missing Homebrew packages: ${packages_to_install[*]}"
+    brew install "${packages_to_install[@]}" 2>/dev/null || {
+        error "Failed to install packages via brew."
+        exit 1
+    }
+}
+
+install_system_packages() {
+    local pkg_mgr=""
+    case "$OS_TYPE" in
+        fedora)   pkg_mgr="sudo dnf install -y" ;;
+        debian)   pkg_mgr="sudo apt install -y" ;;
+        arch)     pkg_mgr="sudo pacman -S --noconfirm" ;;
+        suse)     pkg_mgr="sudo zypper install -y" ;;
+        *)        return ;;
+    esac
+
+    local cmd="$pkg_mgr $REQUIRED_PACKAGES"
+    if confirm "$cmd"; then
+        eval "$cmd" || {
+            error "Package installation failed."
+            exit 1
+        }
+    else
+        warn "Skipped package installation."
+        warn "Install manually and run this script again:"
+        echo "  $cmd"
+        exit 1
+    fi
+}
+
+# Compute a PKG_CONFIG_PATH that includes Homebrew's prefix if available.
+BREW_PC_PATH=""
+resolve_pkg_config_path() {
+    if [[ -n "$BREW_PC_PATH" ]]; then
+        return
+    fi
+    local pc_path="${PKG_CONFIG_PATH:-}"
+    if [[ "$USE_BREW" == true ]] && command -v brew &>/dev/null; then
+        local brew_prefix
+        brew_prefix="$(brew --prefix 2>/dev/null)" || true
+        if [[ -n "$brew_prefix" ]] && [[ ":$pc_path:" != *":$brew_prefix:"* ]]; then
+            pc_path="${pc_path:+$pc_path:}${brew_prefix}/lib/pkgconfig"
+        fi
+    fi
+    BREW_PC_PATH="$pc_path"
+}
+
+# Check a dependency via pkg-config, using Homebrew's prefix if available.
+# Prints the detected version next to the check mark.
+pkg_config_check() {
+    local name="$1"
+    local pkg_name="$2"
+    resolve_pkg_config_path
+
+    if PKG_CONFIG_PATH="$BREW_PC_PATH" pkg-config --exists "$pkg_name" 2>/dev/null; then
+        local version
+        version="$(PKG_CONFIG_PATH="$BREW_PC_PATH" pkg-config --modversion "$pkg_name" 2>/dev/null)" || version=""
+        info "  ✓ $name ($version)"
+        return 0
+    else
+        warn "  ✗ $name"
+        return 1
+    fi
+}
+
+# Check a dependency by running a command and extracting a version string.
+# Usage: check_dep "Rust stable" "rustc --version"
 check_dep() {
     local name="$1"
     local check_cmd="$2"
     if eval "$check_cmd" &>/dev/null; then
-        info "  ✓ $name"
+        local version
+        version="$(eval "$check_cmd" 2>&1 | head -1 | sed -n 's/.* \([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')" || version=""
+        info "  ✓ $name ($version)"
         return 0
     else
         warn "  ✗ $name"
@@ -139,8 +199,11 @@ check_dependencies() {
     fi
 
     step "Checking desktop feature dependencies..."
-    check_dep "GTK3 dev headers" "pkg-config --exists gtk+-3.0" || missing=true
-    check_dep "libappindicator" "pkg-config --exists libappindicator-gtk3" || missing=true
+    pkg_config_check "GTK3 dev headers" "gtk+-3.0" || missing=true
+    pkg_config_check "libappindicator" "ayatana-appindicator3-0.1" || missing=true
+
+    step "Checking Rust dev tools..."
+    check_dep "rust-analyzer" "rust-analyzer --version" || missing=true
 
     if [[ "$missing" == false ]]; then
         return 0
@@ -171,6 +234,18 @@ main() {
 
     if check_dependencies; then
         info "All dependencies satisfied."
+
+        # Warn about outdated packages
+        if [[ "$USE_BREW" == true ]]; then
+            local outdated
+            outdated="$(brew outdated $REQUIRED_PACKAGES 2>/dev/null)" || true
+            if [[ -n "$outdated" ]]; then
+                echo ""
+                warn "New package versions available. Upgrade with:"
+                echo "  brew upgrade $REQUIRED_PACKAGES"
+            fi
+        fi
+
         echo ""
         info "Build the project with:"
         echo "  cargo run -- start"
@@ -186,6 +261,54 @@ main() {
         error "Cannot determine packages for this platform."
         error "Install GTK3 and libappindicator manually."
         exit 1
+    fi
+
+    # Install rust-analyzer if missing
+    if ! rustup component list --installed 2>/dev/null | grep -q rust-analyzer; then
+        step "Installing rust-analyzer..."
+        rustup component add rust-analyzer
+        info "  ✓ rust-analyzer"
+    fi
+
+    # Verify everything is satisfied after installation
+    echo ""
+    step "Verifying installation..."
+    resolve_pkg_config_path
+    local verify_failed=false
+    local verify_msgs=()
+
+    if ! PKG_CONFIG_PATH="$BREW_PC_PATH" pkg-config --exists gtk+-3.0 2>/dev/null; then
+        verify_failed=true
+        verify_msgs+=("GTK3 dev headers")
+    fi
+    if ! PKG_CONFIG_PATH="$BREW_PC_PATH" pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null; then
+        verify_failed=true
+        verify_msgs+=("libappindicator")
+    fi
+    if ! rustup component list --installed 2>/dev/null | grep -q rust-analyzer; then
+        verify_failed=true
+        verify_msgs+=("rust-analyzer")
+    fi
+
+    if [[ "$verify_failed" == true ]]; then
+        echo ""
+        warn "pkg-config cannot find:"
+        for msg in "${verify_msgs[@]}"; do
+            echo "  - $msg"
+        done
+        echo ""
+        info "Ensure PKG_CONFIG_PATH includes your package manager's pkg-config dir."
+    fi
+
+    # Warn about outdated packages
+    if [[ "$USE_BREW" == true ]]; then
+        local outdated
+        outdated="$(brew outdated $REQUIRED_PACKAGES 2>/dev/null)" || true
+        if [[ -n "$outdated" ]]; then
+            echo ""
+            warn "New package versions available. Upgrade with:"
+            echo "  brew upgrade $REQUIRED_PACKAGES"
+        fi
     fi
 
     echo ""

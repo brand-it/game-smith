@@ -1,3 +1,5 @@
+# Local overrides — aliases + linker path for this machine
+
 [alias]
 loco = "run --"
 loco-tool = "run --"

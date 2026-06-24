@@ -17,7 +17,7 @@ use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter};
 use crate::{
     controllers, initializers, tasks,
     workers::{
-        command_exec::CommandExecWorker, downloader::DownloadWorker, log_cleanup::LogCleanupWorker,
+        command_exec::CommandExecWorker, log_cleanup::LogCleanupWorker,
         steamcmd_install::SteamCmdInstallWorker,
     },
 };
@@ -133,7 +133,6 @@ impl Hooks for App {
             .add_route(Routes::new().add("/", get(redirect_to_servers)))
     }
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
-        queue.register(DownloadWorker::build(ctx)).await?;
         queue.register(CommandExecWorker::build(ctx)).await?;
         queue.register(LogCleanupWorker::build(ctx)).await?;
         queue.register(SteamCmdInstallWorker::build(ctx)).await?;

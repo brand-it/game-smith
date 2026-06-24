@@ -54,19 +54,19 @@ impl Tray {
                 let dx = x.abs_diff(center);
                 let dy = y.abs_diff(center);
                 let dist_sq = dx * dx + dy * dy;
-                let in_circle = dist_sq <= radius_sq;
 
                 let idx = (y * size + x) as usize * 4;
-                if in_circle {
-                    pixels[idx] = 220;
-                    pixels[idx + 1] = 225;
+                if dist_sq <= radius_sq {
+                    pixels[idx] = 255;
+                    pixels[idx + 1] = 255;
                     pixels[idx + 2] = 255;
+                    pixels[idx + 3] = 255;
                 } else {
-                    pixels[idx] = 30;
-                    pixels[idx + 1] = 30;
-                    pixels[idx + 2] = 40;
+                    pixels[idx] = 0;
+                    pixels[idx + 1] = 0;
+                    pixels[idx + 2] = 0;
+                    pixels[idx + 3] = 0;
                 }
-                pixels[idx + 3] = 255;
             }
         }
 
