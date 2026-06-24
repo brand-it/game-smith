@@ -84,10 +84,9 @@
             <!-- Boot Script -->
             <div class="mb-3">
                 <label for="boot_script" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-boot-script", lang="en-US") }}</label>
-                <input type="text" name="boot_script" id="boot_script"
+                <textarea name="boot_script" id="boot_script" rows="3"
                     placeholder="{{ t(key="servers-form-boot-script-placeholder", lang="en-US") }}"
-                    value="{% if form_data %}{{ form_data.boot_script | default(value='') }}{% elif template %}{{ template.boot_script | default(value='') }}{% endif %}"
-                    class="form-input-mono">
+                    class="form-input-mono">{% if form_data %}{{ form_data.boot_script | default(value='') }}{% elif template %}{{ template.boot_script | default(value='') }}{% endif %}</textarea>
                 <p class="mt-0.5 mb-0 text-xs text-slate-500">{{ t(key="servers-form-boot-script-help", lang="en-US") }}</p>
             </div>
 
