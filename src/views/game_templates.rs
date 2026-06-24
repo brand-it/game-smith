@@ -46,6 +46,7 @@ pub fn new_form(
         data!({
             "prefilled_name": prefilled_name,
             "server": server.map(TemplateView::new_from_server),
+            "source_server_name": server.map(|s| s.name.as_str()),
             "error": error,
             "form_data": form_data,
         }),
