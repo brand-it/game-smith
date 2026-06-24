@@ -258,12 +258,29 @@ async fn servers_update_does_not_500_when_install_dir_missing() {
 
     let tmp = setup_fake_steamcmd();
 
-    // Override HOME so default_install_dir() computes a path under tmp
-    // (which doesn't exist yet), and XDG_DATA_HOME for SteamCMD resolution.
-    let original_home = std::env::var("HOME").ok();
-    let original_xdg = std::env::var("XDG_DATA_HOME").ok();
-    std::env::set_var("HOME", &tmp);
-    std::env::set_var("XDG_DATA_HOME", &tmp);
+    // Override platform-specific env vars so default_install_dir() and
+    // resolve_data_home() both compute paths under tmp.
+    #[cfg(target_os = "windows")]
+    let (orig_1, orig_2) = (
+        std::env::var("USERPROFILE").ok(),
+        std::env::var("APPDATA").ok(),
+    );
+    #[cfg(not(target_os = "windows"))]
+    let (orig_1, orig_2) = (
+        std::env::var("HOME").ok(),
+        std::env::var("XDG_DATA_HOME").ok(),
+    );
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::set_var("USERPROFILE", &tmp);
+        std::env::set_var("APPDATA", &tmp);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::set_var("HOME", &tmp);
+        std::env::set_var("XDG_DATA_HOME", &tmp);
+    }
 
     request::<App, _, _>(|request, ctx| async move {
         let model = ActiveModel::create(&ctx, &make_form(740, "Update Test Server"), None)
@@ -278,19 +295,33 @@ async fn servers_update_does_not_500_when_install_dir_missing() {
         assert_ne!(
             response.status_code().as_u16(),
             500,
-            "POST /servers/:id/update must not 500 when install_dir is missing (got WriteScript)"
+            "POST /servers/:id/update must not 500 when install_dir is missing"
         );
     })
     .await;
 
     // Restore environment
-    match original_home {
-        Some(val) => std::env::set_var("HOME", val),
-        None => std::env::remove_var("HOME"),
+    #[cfg(target_os = "windows")]
+    {
+        match orig_1 {
+            Some(val) => std::env::set_var("USERPROFILE", val),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        match orig_2 {
+            Some(val) => std::env::set_var("APPDATA", val),
+            None => std::env::remove_var("APPDATA"),
+        }
     }
-    match original_xdg {
-        Some(val) => std::env::set_var("XDG_DATA_HOME", val),
-        None => std::env::remove_var("XDG_DATA_HOME"),
+    #[cfg(not(target_os = "windows"))]
+    {
+        match orig_1 {
+            Some(val) => std::env::set_var("HOME", val),
+            None => std::env::remove_var("HOME"),
+        }
+        match orig_2 {
+            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
     }
     let _ = std::fs::remove_dir_all(&tmp);
 }
