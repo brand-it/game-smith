@@ -179,7 +179,7 @@ impl IntoResponse for StandardError {
                 Steam Config
             </a>
         </nav>
-        <div class="sidebar-footer">v0.5.0</div>
+        <div class="sidebar-footer">v0.6.0</div>
     </aside>
 
     <!-- Main content -->
