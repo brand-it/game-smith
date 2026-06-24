@@ -107,6 +107,15 @@ impl DesktopManager {
         std::thread::spawn(move || {
             #[cfg(target_os = "linux")]
             {
+                // Pre-check: ensure libayatana-appindicator can be loaded.
+                // If LD_LIBRARY_PATH is missing (e.g. Homebrew on Linux), the
+                // tray will fail silently; catch it early with a clear message.
+                if let Err(e) = check_appindicator_lib() {
+                    eprintln!("game-smith: {e}");
+                    let _ = tx.send(Some(format!("appindicator library check failed: {e}")));
+                    return;
+                }
+
                 if let Err(e) = gtk::init() {
                     eprintln!("game-smith: GTK init failed ({e}) — tray disabled");
                     let _ = tx.send(Some(format!("gtk init failed: {e}")));
@@ -173,4 +182,57 @@ impl DesktopManager {
     pub fn notify(&self, title: &str, message: &str) {
         notifications::notify(title, message);
     }
+}
+
+/// Checks if the libayatana-appindicator shared library can be loaded at runtime.
+///
+/// On Linux with Homebrew, the library may be installed but not in
+/// `LD_LIBRARY_PATH` or the `ldconfig` cache, causing the tray to fail
+/// silently. This function detects that case and returns a clear error
+/// with remediation steps.
+#[cfg(target_os = "linux")]
+fn check_appindicator_lib() -> Result<(), String> {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let lib_name = OsStr::from_bytes(b"libayatana-appindicator3.so.1");
+
+    // Check if LD_LIBRARY_PATH contains the library
+    let ld_path = std::env::var_os("LD_LIBRARY_PATH");
+    let ld_dirs: Vec<_> = ld_path
+        .as_deref()
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+
+    for dir in ld_dirs {
+        if dir.join(lib_name).exists() {
+            return Ok(());
+        }
+    }
+
+    // Library not in LD_LIBRARY_PATH. Check if it exists in common locations.
+    let common_paths = [
+        "/home/linuxbrew/.linuxbrew/lib",
+        "/home/linuxbrew/.linuxbrew/opt/libayatana-appindicator/lib",
+        "/usr/lib",
+        "/usr/lib/x86_64-linux-gnu",
+    ];
+
+    for path in common_paths {
+        let lib_path = format!("{}/{}", path, lib_name.to_string_lossy());
+        if std::path::Path::new(&lib_path).exists() {
+            return Err(format!(
+                "libayatana-appindicator3.so.1 is installed at `{lib_path}` but not in LD_LIBRARY_PATH.\n\
+                 The tray icon requires this library at runtime.\n\
+                 Fix: export LD_LIBRARY_PATH={path}:$LD_LIBRARY_PATH\n\
+                 Or: use 'make dev' instead of 'cargo run' (automatically sets LD_LIBRARY_PATH)."
+            ));
+        }
+    }
+
+    // Library not found anywhere
+    Err("libayatana-appindicator3 shared library not found.\n\
+         Install it via your package manager or Homebrew.\n\
+         Fix: make setup"
+        .to_string())
 }

@@ -2,6 +2,11 @@
 	test fmt fmt-check style lint qa check-windows \
 	migrate-gen migrate-up build build-css release package package-rpm package-msi install run-release clean reset \
 	install-autostart uninstall-autostart
+
+# Auto-detect Homebrew's lib path for runtime library loading.
+# On Linux with Homebrew, libayatana-appindicator3.so.1 is not in ldconfig's
+# cache, so the dynamic linker needs LD_LIBRARY_PATH.
+BREW_LIB := $(shell command -v brew >/dev/null 2>&1 && brew --prefix 2>/dev/null)/lib
 help:
 	@echo "Usage: make <target>"
 	@echo ""
@@ -53,10 +58,10 @@ setup-check:
 # ── Development ────────────────────────────────────────────────────────
 
 dev:
-	cargo run -- start
+	@if [ -n "$(BREW_LIB)" ]; then export LD_LIBRARY_PATH="$(BREW_LIB):$$LD_LIBRARY_PATH"; fi; cargo run -- start
 
 watch:
-	cargo watch -x "run -- start"
+	@if [ -n "$(BREW_LIB)" ]; then export LD_LIBRARY_PATH="$(BREW_LIB):$$LD_LIBRARY_PATH"; fi; cargo watch -x "run -- start"
 
 # ── Quality ────────────────────────────────────────────────────────────
 
