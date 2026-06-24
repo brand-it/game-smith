@@ -228,7 +228,10 @@ mod tests {
         log_result(
             std::fs::remove_dir_all(&temp_dir),
             &format!("cleaned up pre-existing temp dir {}", temp_dir.display()),
-            &format!("failed to clean up pre-existing temp dir {}", temp_dir.display()),
+            &format!(
+                "failed to clean up pre-existing temp dir {}",
+                temp_dir.display()
+            ),
         );
         std::fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
 

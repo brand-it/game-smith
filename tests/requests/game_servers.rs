@@ -16,6 +16,38 @@ fn make_form(app_id: u32, name: &str) -> CreateServerForm {
     }
 }
 
+/// Creates a fake SteamCMD binary tree in a temp directory.
+///
+/// Returns the temp directory path. The caller is responsible for cleanup.
+///
+/// Path chain:
+///   XDG_DATA_HOME = tmp
+///   resolve_data_home() = "{tmp}/game-smith"
+///   AppDirs::new(data_home) -> app_dir = "{tmp}/game-smith/game-smith"
+///   SteamCmd::new(dirs) -> binary = app_dir/steamcmd/steamcmd.sh
+fn setup_fake_steamcmd() -> std::path::PathBuf {
+    let tmp = std::env::temp_dir().join(format!("gs-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let fake_steamcmd_dir = tmp.join("game-smith").join("game-smith").join("steamcmd");
+    std::fs::create_dir_all(&fake_steamcmd_dir).expect("failed to create fake steamcmd dir");
+    #[cfg(target_os = "windows")]
+    let binary_name = "steamcmd.exe";
+    #[cfg(not(target_os = "windows"))]
+    let binary_name = "steamcmd.sh";
+    let fake_binary_path = fake_steamcmd_dir.join(binary_name);
+    std::fs::write(&fake_binary_path, b"#!/bin/sh\nexit 0\n").expect("failed to write fake binary");
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&fake_binary_path)
+            .expect("failed to get metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_binary_path, perms).expect("failed to set permissions");
+    }
+    tmp
+}
+
 /// GET /servers renders the game server list page.
 #[tokio::test]
 #[serial]
@@ -204,37 +236,30 @@ async fn servers_create_checkbox_non_true_value_fails() {
         "non-true value should fail deserialization"
     );
 }
-
 /// POST /servers/:id/update must not return 500 due to missing install_dir.
 ///
 /// Regression test: `update()` wrote `install_dir/update_{app_id}.txt` without first
 /// calling `create_dir_all`, so a server whose install_dir was absent returned HTTP 500
 /// with error "failed to update server: No such file or directory".
 ///
-/// This test only runs when SteamCMD is present on the host (it takes the code path that
-/// reaches `fs::write`). Without SteamCMD the handler returns 500 from
-/// `SteamCmdNotInstalled` regardless of the directory, so the assertion would be vacuous.
+/// Uses a no-op fake SteamCMD so the worker completes immediately without network access.
+/// Overrides both HOME and XDG_DATA_HOME so the server's computed install_dir points
+/// into the temp tree (where the target subdirectory doesn't exist).
 #[tokio::test]
 #[serial]
 async fn servers_update_does_not_500_when_install_dir_missing() {
-    use game_smith::data::steamcmd::SteamCmd;
-    use game_smith::{resolve_data_home, AppDirs};
+    use game_smith::models::game_servers::ActiveModel;
 
-    // Skip if SteamCMD is not installed — without it the handler 500s from
-    // SteamCmdNotInstalled regardless of the install_dir, making the assertion vacuous.
-    let data_home = resolve_data_home();
-    let dirs = AppDirs::new(data_home);
-    let steamcmd = SteamCmd::new(&dirs);
-    if !steamcmd.is_installed() {
-        return;
-    }
+    let tmp = setup_fake_steamcmd();
+
+    // Override HOME so default_install_dir() computes a path under tmp
+    // (which doesn't exist yet), and XDG_DATA_HOME for SteamCMD resolution.
+    let original_home = std::env::var("HOME").ok();
+    let original_xdg = std::env::var("XDG_DATA_HOME").ok();
+    std::env::set_var("HOME", &tmp);
+    std::env::set_var("XDG_DATA_HOME", &tmp);
 
     request::<App, _, _>(|request, ctx| async move {
-        // install_dir points to a path that does not exist on disk.
-        let nonexistent = std::env::temp_dir()
-            .join(format!("gs-req-update-{}/nonexistent", std::process::id()))
-            .to_string_lossy()
-            .to_string();
         let model = ActiveModel::create(&ctx, &make_form(740, "Update Test Server"), None)
             .await
             .expect("failed to create server record");
@@ -251,6 +276,17 @@ async fn servers_update_does_not_500_when_install_dir_missing() {
         );
     })
     .await;
+
+    // Restore environment
+    match original_home {
+        Some(val) => std::env::set_var("HOME", val),
+        None => std::env::remove_var("HOME"),
+    }
+    match original_xdg {
+        Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+        None => std::env::remove_var("XDG_DATA_HOME"),
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
 }
 /// GET /servers/new must show the "Create from Template" card when templates exist,
 /// and /servers/new/form?template_id=X must render with pre-filled data.

@@ -436,7 +436,7 @@ async fn test_update_creates_install_dir_before_writing_script() {
     std::env::set_var("XDG_DATA_HOME", &tmp);
 
     // install_dir is a subdirectory that does NOT exist on disk.
-    let install_dir = tmp
+    let _install_dir = tmp
         .join("nonexistent-install-dir")
         .to_string_lossy()
         .to_string();
