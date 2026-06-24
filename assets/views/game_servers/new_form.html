@@ -81,6 +81,73 @@
                 </div>
             </div>
 
+            <!-- Boot Script -->
+            <div class="mb-3">
+                <label for="boot_script" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-boot-script", lang="en-US") }}</label>
+                <input type="text" name="boot_script" id="boot_script"
+                    placeholder="{{ t(key="servers-form-boot-script-placeholder", lang="en-US") }}"
+                    value="{% if form_data %}{{ form_data.boot_script | default(value='') }}{% elif template %}{{ template.boot_script | default(value='') }}{% endif %}"
+                    class="form-input-mono">
+                <p class="mt-0.5 mb-0 text-xs text-slate-500">{{ t(key="servers-form-boot-script-help", lang="en-US") }}</p>
+            </div>
+
+            <!-- Automation settings group -->
+            <div class="mb-3 p-4 bg-slate-50 rounded-lg border border-gray-200 space-y-3">
+                <!-- Auto Start -->
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="auto_start" value="true"
+                            {% if form_data and form_data.auto_start %}checked{% elif template and template.auto_start %}checked{% endif %}
+                            class="w-4 h-4 accent-blue-600">
+                        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-auto-start", lang="en-US") }}</span>
+                    </label>
+                    <p class="mt-0.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-auto-start-help", lang="en-US") }}</p>
+                </div>
+
+                <!-- Auto Restart -->
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="auto_restart" value="true"
+                            {% if form_data and form_data.auto_restart %}checked{% elif template and template.auto_restart %}checked{% endif %}
+                            class="w-4 h-4 accent-blue-600">
+                        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-auto-restart", lang="en-US") }}</span>
+                    </label>
+                    <p class="mt-0.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-auto-restart-help", lang="en-US") }}</p>
+                </div>
+
+                <!-- Auto Update -->
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="auto_update" value="true"
+                            {% if form_data and form_data.auto_update %}checked{% elif template and template.auto_update %}checked{% endif %}
+                            class="w-4 h-4 accent-blue-600">
+                        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-auto-update", lang="en-US") }}</span>
+                    </label>
+                    <p class="mt-0.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-auto-update-help", lang="en-US") }}</p>
+                </div>
+
+                <!-- Update On Start -->
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="update_on_start" value="true"
+                            {% if form_data and form_data.update_on_start %}checked{% elif template and template.update_on_start %}checked{% endif %}
+                            class="w-4 h-4 accent-blue-600">
+                        <span class="text-sm font-medium text-slate-700">{{ t(key="servers-form-update-on-start", lang="en-US") }}</span>
+                    </label>
+                    <p class="mt-0.5 ml-6 mb-0 text-xs text-slate-500">{{ t(key="servers-form-update-on-start-help", lang="en-US") }}</p>
+                </div>
+            </div>
+
+            <!-- Restart Schedule -->
+            <div class="mb-3">
+                <label for="restart_schedule" class="block text-sm font-medium text-slate-700 mb-1.5">{{ t(key="servers-form-restart-schedule", lang="en-US") }}</label>
+                <input type="text" name="restart_schedule" id="restart_schedule"
+                    placeholder="{{ t(key="servers-form-restart-schedule-placeholder", lang="en-US") }}"
+                    value="{% if form_data %}{{ form_data.restart_schedule | default(value='') }}{% elif template %}{{ template.restart_schedule | default(value='') }}{% endif %}"
+                    class="form-input-mono">
+                <p class="mt-0.5 mb-0 text-xs text-slate-500">{{ t(key="servers-form-restart-schedule-help", lang="en-US") }}</p>
+            </div>
+
             <div class="flex items-center gap-3">
                 <button type="submit" class="btn-primary">
                     {{ t(key="servers-form-install", lang="en-US") }}
@@ -102,6 +169,7 @@
         {% if template.description %}
         <p class="text-sm text-slate-500 mb-4">{{ template.description }}</p>
         {% endif %}
+        <p class="text-xs text-slate-400 mt-0.5 mb-4">{{ t(key="servers-form-template-note", lang="en-US") }}</p>
 
         <!-- Installation settings -->
         <h3 class="section-heading mb-2">{{ t(key="servers-select-template-app-id", lang="en-US") }} &amp; Mod</h3>

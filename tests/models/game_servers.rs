@@ -28,6 +28,12 @@ fn make_form(app_id: u32, name: &str) -> CreateServerForm {
         steam_username: None,
         steam_password: None,
         template_id: None,
+        boot_script: None,
+        auto_start: false,
+        auto_restart: false,
+        auto_update: false,
+        update_on_start: false,
+        restart_schedule: None,
     }
 }
 
@@ -516,6 +522,12 @@ async fn test_create_game_server_from_template() {
         steam_username: None,
         steam_password: None,
         template_id: Some(template.id),
+        boot_script: None,
+        auto_start: false,
+        auto_restart: false,
+        auto_update: false,
+        update_on_start: false,
+        restart_schedule: None,
     };
     let server = ActiveModel::create(&boot.app_context, &form, Some(&template))
         .await
