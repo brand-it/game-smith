@@ -1,5 +1,6 @@
 {% extends "_layout/base.html" %}
 {% import "_macros/status_badge.html" as macros %}
+{% import "_macros/steam_image.html" as steam_img %}
 
 {% block title %}{{ server.name }} — Game Servers{% endblock %}
 
@@ -18,14 +19,23 @@
 </div>
 {% endif %}
 
-<!-- Header: back link + server name + status -->
-<div class="mb-3">
-    <a href="/servers"
-        class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr;
-        {{ t(key="servers-back", lang="en-US") }}</a>
-    <div class="flex items-center gap-3 mt-2">
-        <h1 class="text-2xl font-bold text-slate-900 m-0">{{ server.name }}</h1>
-        {{ macros::status_badge(status=server.status) }}
+<!-- Hero banner -->
+<div class="flex rounded-xl overflow-hidden mb-5" style="height:200px">
+    <div class="relative flex-1 overflow-hidden">
+        {{ steam_img::steam_hero(app_id=server.app_id, img_class="absolute inset-0 w-full h-full") }}
+        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black"></div>
+    </div>
+    <div class="flex-shrink-0 bg-black flex items-center p-6" style="width:400px">
+        <div>
+            <a href="/servers"
+                class="text-white/60 text-sm hover:text-white no-underline transition-colors inline-block mb-2">
+                &larr; {{ t(key="servers-back", lang="en-US") }}</a>
+            <div class="flex items-center gap-3 mb-1">
+                <h1 class="text-white text-3xl font-bold m-0">{{ server.name }}</h1>
+                {{ macros::status_badge(status=server.status) }}
+            </div>
+            <div class="text-white/70 text-sm">App ID: {{ server.app_id }} &middot; {{ server.platform | upper }}</div>
+        </div>
     </div>
 </div>
 

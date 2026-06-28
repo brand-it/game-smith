@@ -111,6 +111,7 @@ mod tests {
             steamcmd_dir: temp_dir.clone(),
             binary_path: temp_dir.join(BINARY_NAME),
             model: None,
+            ld_preload_path: None,
         };
 
         steamcmd.try_install_dependencies().await;

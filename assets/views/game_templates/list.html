@@ -1,4 +1,5 @@
 {% extends "_layout/base.html" %}
+{% import "_macros/item_card.html" as card %}
 
 {% block title %}{{ t(key="templates-title", lang="en-US") }}{% endblock %}
 
@@ -18,38 +19,17 @@
 </div>
 
 {% if templates|length > 0 %}
-<div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-    <table class="w-full border-collapse text-sm">
-        <thead>
-            <tr>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-name", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-app-id", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-mod", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-beta", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-login", lang="en-US") }}</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-gray-50 border-b border-gray-200">{{ t(key="templates-table-actions", lang="en-US") }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for template in templates %}
-            <tr class="border-b border-gray-100 transition-colors hover:bg-gray-50">
-                <td class="px-4 py-3">
-                    <a href="/templates/{{ template.id }}" class="font-semibold text-blue-600 no-underline hover:underline">{{ template.name }}</a>
-                    {% if template.description %}
-                    <p class="text-xs text-slate-500 mt-0.5 m-0">{{ template.description }}</p>
-                    {% endif %}
-                </td>
-                <td class="px-4 py-3 font-mono text-slate-600">{{ template.app_id }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ template.server_mod | default(value="") }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ template.beta_branch | default(value="") }}</td>
-                <td class="px-4 py-3 text-slate-600">{% if template.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</td>
-                <td class="px-4 py-3">
-                    <a href="/servers/new/form?template_id={{ template.id }}" class="text-sm text-blue-600 no-underline hover:underline">{{ t(key="templates-use-as-server", lang="en-US") }}</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for template in templates %}
+        {% set template_subtitle = "App ID " ~ template.app_id %}
+        {{ card::item_card(
+            href="/templates/" ~ template.id,
+            app_id=template.app_id,
+            name=template.name,
+            subtitle=template_subtitle,
+            status=""
+        ) }}
+    {% endfor %}
 </div>
 {% else %}
 <div class="bg-white border border-gray-200 rounded-lg p-8 text-center">

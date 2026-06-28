@@ -1,0 +1,17 @@
+{% macro steam_hero(app_id, img_class) %}
+<img
+    src="https://shared.steamstatic.com/store_item_assets/steam/apps/{{ app_id }}/library_hero.jpg"
+    alt="Game image"
+    class="object-cover bg-slate-200 {{ img_class }}"
+    loading="lazy"
+    onerror="this.onerror=null;this.src='/static/placeholder-hero.jpg'">
+{% endmacro %}
+
+{% macro steam_library(app_id, img_class) %}
+<img
+    src="https://shared.steamstatic.com/store_item_assets/steam/apps/{{ app_id }}/library_600x900.jpg"
+    alt="Game image"
+    class="object-cover bg-slate-200 {{ img_class }}"
+    loading="lazy"
+    onerror="this.onerror=null;this.src='/static/placeholder-card.jpg'">
+{% endmacro %}

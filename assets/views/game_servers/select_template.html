@@ -1,5 +1,6 @@
 {% extends "_layout/base.html" %}
 
+{% import "_macros/steam_image.html" as steam_img %}
 {% block title %}{{ t(key="servers-select-template-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
@@ -10,46 +11,31 @@
 </div>
 
 {% if templates|length > 0 %}
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[960px]">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
     {% for template in templates %}
-    <div class="bg-white border border-gray-200 rounded-lg p-4 flex flex-col">
-        <div class="flex-1">
-            <h2 class="text-lg font-semibold text-slate-900 mb-1">{{ template.name }}</h2>
-            {% if template.description %}
-            <p class="text-sm text-slate-500 mb-4">{{ template.description }}</p>
-            {% endif %}
-
-            <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                    <span class="text-slate-500">{{ t(key="servers-select-template-app-id", lang="en-US") }}</span>
-                    <span class="font-mono text-slate-700">{{ template.app_id }}</span>
-                </div>
-                {% if template.server_mod %}
-                <div class="flex justify-between">
-                    <span class="text-slate-500">{{ t(key="servers-select-template-mod", lang="en-US") }}</span>
-                    <span class="text-slate-700">{{ template.server_mod }}</span>
-                </div>
+    <a href="/servers/new/form?template_id={{ template.id }}"
+        class="group block rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-shadow no-underline">
+        <div class="relative overflow-hidden rounded-xl" style="aspect-ratio:2/3">
+            {{ steam_img::steam_library(app_id=template.app_id, img_class="absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-500") }}
+            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+            <div class="absolute bottom-0 left-0 right-0 p-4">
+                <h2 class="text-white font-bold text-xl truncate mb-1">{{ template.name }}</h2>
+                {% if template.description %}
+                <p class="text-white/70 text-xs mb-2 line-clamp-2">{{ template.description }}</p>
                 {% endif %}
-                {% if template.beta_branch %}
-                <div class="flex justify-between">
-                    <span class="text-slate-500">{{ t(key="servers-select-template-beta", lang="en-US") }}</span>
-                    <span class="text-slate-700">{{ template.beta_branch }}</span>
+                <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-white/60 mb-2">
+                    <span>App ID: {{ template.app_id }}</span>
+                    {% if template.server_mod %}
+                    <span>Mod: {{ template.server_mod }}</span>
+                    {% endif %}
+                    {% if template.beta_branch %}
+                    <span>Beta: {{ template.beta_branch }}</span>
+                    {% endif %}
                 </div>
-                {% endif %}
-                <div class="flex justify-between">
-                    <span class="text-slate-500">{{ t(key="servers-select-template-login", lang="en-US") }}</span>
-                    <span class="text-slate-700">{% if template.use_steam_login %}{{ t(key="servers-login-steam", lang="en-US") }}{% else %}{{ t(key="servers-login-anonymous", lang="en-US") }}{% endif %}</span>
-                </div>
+                <div class="text-blue-300 text-sm font-medium">Use this template &rarr;</div>
             </div>
         </div>
-
-        <div class="mt-4 pt-4 border-t border-gray-100">
-            <a href="/servers/new/form?template_id={{ template.id }}"
-                class="inline-flex w-full justify-center items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg no-underline transition-colors hover:bg-blue-700">
-                {{ t(key="servers-select-template-use", lang="en-US") }}
-            </a>
-        </div>
-    </div>
+    </a>
     {% endfor %}
 </div>
 {% else %}

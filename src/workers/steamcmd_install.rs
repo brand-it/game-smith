@@ -50,20 +50,53 @@ impl SteamCmdInstallWorker {
 
         match result {
             Ok(()) => {
-                info!("SteamCMD installed successfully");
+                info!("SteamCMD installed successfully, verifying binary...");
 
-                // Update health status in shared store
-                set_shared_store(&self.ctx.shared_store);
-                self.ctx.shared_store.insert(SteamCmdHealthStatus::Healthy);
+                // Verify the binary actually runs (not just exists on disk)
+                match steamcmd.is_installed_with_deps() {
+                    Ok(()) => {
+                        info!("SteamCMD binary verified — runs successfully");
 
-                // Reclaim model from steamcmd to mark run as completed
-                if let Some(m) = steamcmd.take_model() {
-                    let mut active: crate::models::command_runs::ActiveModel = m.into();
-                    if let Err(e) = active
-                        .finish(&self.ctx, Some(0), CommandStatus::Completed)
-                        .await
-                    {
-                        tracing::warn!(run_id, error = %e, "failed to mark install run as completed in DB");
+                        // Update health status in shared store
+                        set_shared_store(&self.ctx.shared_store);
+                        self.ctx.shared_store.insert(SteamCmdHealthStatus::Healthy);
+
+                        // Reclaim model from steamcmd to mark run as completed
+                        if let Some(m) = steamcmd.take_model() {
+                            let mut active: crate::models::command_runs::ActiveModel = m.into();
+                            if let Err(e) = active
+                                .finish(&self.ctx, Some(0), CommandStatus::Completed)
+                                .await
+                            {
+                                tracing::warn!(run_id, error = %e, "failed to mark install run as completed in DB");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(error = %e, "SteamCMD binary failed verification — likely missing dependencies");
+
+                        if let Some(m) = steamcmd.model() {
+                            m.log_write(&format!("Binary verification failed: {e}"))
+                                .await;
+                        }
+
+                        // Mark health as broken with the error details
+                        set_shared_store(&self.ctx.shared_store);
+                        let raw_msg = e.to_string();
+                        self.ctx
+                            .shared_store
+                            .insert(SteamCmdHealthStatus::Broken(raw_msg));
+
+                        // Reclaim model from steamcmd to mark run as failed
+                        if let Some(m) = steamcmd.take_model() {
+                            let mut active: crate::models::command_runs::ActiveModel = m.into();
+                            if let Err(e) = active
+                                .finish(&self.ctx, Some(1), CommandStatus::Failed)
+                                .await
+                            {
+                                tracing::warn!(run_id, error = %e, "failed to mark install run as failed in DB");
+                            }
+                        }
                     }
                 }
             }
