@@ -36,7 +36,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -46,14 +46,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/
           key: ${{ runner.os }}-cargo-target-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-target-${{ github.job }}-
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /var/cache/apt/archives
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
@@ -74,7 +74,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -84,14 +84,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/
           key: ${{ runner.os }}-cargo-target-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-target-${{ github.job }}-
       - name: Cache apt packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /var/cache/apt/archives
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/ci.yaml') }}
