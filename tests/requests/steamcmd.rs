@@ -1,4 +1,7 @@
 use game_smith::app::App;
+use game_smith::data::steamcmd::DistroInfo;
+use game_smith::initializers::embedded_i18n::EmbeddedViews;
+use game_smith::views::steamcmd::status as render_steamcmd_status;
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
 
@@ -49,4 +52,80 @@ async fn steamcmd_install_endpoint_exists() {
         );
     })
     .await;
+}
+
+/// Verify the steamcmd status view struct has all template fields.
+///
+/// This is a regression test: if any field the template expects is removed
+/// from the `data!` call in `views::steamcmd::status()`, Tera render fails
+/// with an HTTP 500 and no useful line number.
+#[tokio::test]
+#[serial]
+async fn steamcmd_status_view_struct_regression() {
+    let _boot = boot_test::<App>().await.expect("Failed to boot test app");
+    let views = EmbeddedViews::build().expect("Failed to create embedded views");
+
+    let result = render_steamcmd_status(
+        &views,
+        "/home/user/.local/share/steamcmd/steamcmd", // binary_path
+        true,                                        // installed
+        "healthy",                                   // health_status
+        None,                                        // broken_message
+        None,                                        // last_check_id
+        None,                                        // last_check_status
+        "linux",                                     // platform
+        None,                                        // distro
+    );
+    assert!(result.is_ok(), "Steamcmd status view should render");
+}
+
+/// Verify the steamcmd status view renders when broken_message is set.
+#[tokio::test]
+#[serial]
+async fn steamcmd_status_view_with_broken() {
+    let _boot = boot_test::<App>().await.expect("Failed to boot test app");
+    let views = EmbeddedViews::build().expect("Failed to create embedded views");
+
+    let result = render_steamcmd_status(
+        &views,
+        "/home/user/.local/share/steamcmd/steamcmd",
+        true,
+        "broken",
+        Some("test error"),
+        Some(1),
+        Some("failed"),
+        "linux",
+        Some(&DistroInfo {
+            label: "Arch Linux".to_string(),
+            install_command: "sudo pacman -S lib32-glibc".to_string(),
+        }),
+    );
+    assert!(
+        result.is_ok(),
+        "Steamcmd status view should render with broken state"
+    );
+}
+
+/// Verify the steamcmd status view renders when steamcmd is not installed.
+#[tokio::test]
+#[serial]
+async fn steamcmd_status_view_not_installed() {
+    let _boot = boot_test::<App>().await.expect("Failed to boot test app");
+    let views = EmbeddedViews::build().expect("Failed to create embedded views");
+
+    let result = render_steamcmd_status(
+        &views,
+        "/home/user/.local/share/steamcmd/steamcmd",
+        false,
+        "not_installed",
+        None,
+        None,
+        None,
+        "linux",
+        None,
+    );
+    assert!(
+        result.is_ok(),
+        "Steamcmd status view should render when not installed"
+    );
 }
