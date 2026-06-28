@@ -61,14 +61,14 @@ jobs:
         run: make package
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: game-smith-deb
           path: target/release/*.deb
           retention-days: 30
 
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: game-smith-appimage
           path: target/release/*.AppImage
@@ -119,7 +119,7 @@ jobs:
         run: make package-rpm
 
       - name: Upload RPM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: game-smith-rpm
           path: target/release/x86_64/*.rpm
@@ -156,7 +156,7 @@ jobs:
         run: cargo wix --package game-smith
 
       - name: Upload MSI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: game-smith-msi
           path: target/wix/*.msi
