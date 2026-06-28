@@ -135,8 +135,12 @@ mod tests {
                     "binary_path": "/tmp/steamcmd",
                     "installed": true,
                     "health_status": "healthy",
+                    "broken_message": None::<String>,
                     "last_check_id": None::<i32>,
                     "last_check_status": None::<&str>,
+                    "platform": "linux",
+                    "distro_label": None::<&str>,
+                    "distro_command": None::<&str>,
                 }),
             )
             .expect("Failed to render");

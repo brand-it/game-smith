@@ -325,6 +325,10 @@ impl CommandExecWorker {
 
     /// Apply platform-agnostic command configuration: working directory and
     /// environment variables from the [`CommandRunModel`].
+    ///
+    /// On Linux, also applies `LD_PRELOAD` for `SteamCMD` commands when a
+    /// persisted hint file (`<steamcmd_dir>/.ld_preload`) is present, to
+    /// work around 32-bit segfaults on glibc >= 2.38.
     fn configure_common(cmd: &mut Command, model: &CommandRunModel) {
         if let Some(dir) = &model.working_dir {
             cmd.current_dir(dir);
@@ -335,6 +339,25 @@ impl CommandExecWorker {
             {
                 for (key, value) in variables {
                     cmd.env(key, value);
+                }
+            }
+        }
+
+        // Apply LD_PRELOAD hint for steamcmd commands (glibc >= 2.38 workaround).
+        // The hint file lives next to the binary: `<steamcmd_dir>/.ld_preload`.
+        #[cfg(target_os = "linux")]
+        if let Some(basename) = std::path::Path::new(&model.command)
+            .file_name()
+            .and_then(|n| n.to_str())
+        {
+            if basename == "steamcmd.sh" {
+                if let Some(parent) = std::path::Path::new(&model.command).parent() {
+                    if let Ok(hint) = std::fs::read_to_string(parent.join(".ld_preload")) {
+                        let hint = hint.trim();
+                        if !hint.is_empty() {
+                            cmd.env("LD_PRELOAD", hint);
+                        }
+                    }
                 }
             }
         }

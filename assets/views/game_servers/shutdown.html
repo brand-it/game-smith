@@ -1,5 +1,6 @@
 {% extends "_layout/base.html" %}
 
+{% import "_macros/steam_image.html" as steam_img %}
 {% block title %}Shutting Down{% endblock %}
 
 {% block content %}
@@ -29,22 +30,24 @@
     </div>
 
     <!-- Server cards -->
-    <div id="server-list" class="space-y-2">
-        {% for server in servers %}
-        <div class="server-card" id="server-{{ server.id }}">
-            <div class="server-dot"></div>
-            <div class="server-info">
-                <div class="server-name">{{ server.name }}</div>
-                <div class="server-detail server-error"></div>
-            </div>
-            <span class="status-badge pending">Pending</span>
+<div id="server-list" class="space-y-2">
+    {% for server in servers %}
+    <div class="server-card flex items-center gap-3 px-2 py-2 bg-white border border-gray-200 rounded-lg" id="server-{{ server.id }}">
+        <div class="relative flex-shrink-0 rounded overflow-hidden" style="width:48px;height:72px">
+            {{ steam_img::steam_library(app_id=server.app_id, img_class="absolute inset-0 w-full h-full") }}
+            <div class="absolute inset-0 bg-black/30"></div>
         </div>
-        {% else %}
-        <div class="loading-placeholder">
-            <div class="server-detail">No servers to stop</div>
+        <div class="flex-1 min-w-0">
+            <div class="server-name text-sm font-medium text-slate-900 truncate">{{ server.name }}</div>
+            <div class="server-detail server-error text-xs text-red-600 hidden"></div>
         </div>
-        {% endfor %}
+        <span class="status-badge pending text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">Pending</span>
     </div>
+    {% else %}
+    <div class="loading-placeholder bg-white border border-gray-200 rounded-lg p-8 text-center">
+        <div class="server-detail text-slate-500">No servers to stop</div>
+    </div>
+    {% endfor %}
 </div>
 {% endblock %}
 

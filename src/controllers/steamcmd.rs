@@ -3,8 +3,11 @@ use axum::response::Redirect;
 use axum::routing::{get, post};
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::prelude::*;
+use std::env::consts::OS;
 
-use crate::data::steamcmd::{health_status, SteamCmd, SteamCmdHealthStatus};
+use crate::data::steamcmd::{
+    detect_package_manager, health_status, SteamCmd, SteamCmdHealthStatus,
+};
 use crate::models::command_runs::{ActiveModel as CommandRunActiveModel, Model as CommandRunModel};
 use crate::workers::steamcmd_install::{SteamCmdInstallWorker, SteamCmdInstallWorkerArgs};
 use crate::{resolve_data_home, AppDirs};
@@ -29,6 +32,12 @@ pub async fn check_status(
     let health = health_status().unwrap_or(SteamCmdHealthStatus::Checking);
     let health_str = health.as_str();
 
+    // Extract broken message if health is broken
+    let broken_message = match &health {
+        SteamCmdHealthStatus::Broken(msg) => Some(msg.clone()),
+        _ => None,
+    };
+
     // Query last health check record
     let last_check = CommandRunModel::find_last_health_check(&ctx)
         .await
@@ -36,14 +45,17 @@ pub async fn check_status(
         .flatten();
     let last_check_id = last_check.as_ref().map(|r| r.id);
     let last_check_status = last_check.as_ref().map(|r| r.status.clone());
-
+    let distro = detect_package_manager();
     crate::views::steamcmd::status(
         &v,
         &binary_path,
         installed,
         health_str,
+        broken_message.as_deref(),
         last_check_id,
         last_check_status.as_deref(),
+        OS,
+        distro.as_ref(),
     )
 }
 

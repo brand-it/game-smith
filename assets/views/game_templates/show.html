@@ -1,11 +1,24 @@
 {% extends "_layout/base.html" %}
 
+{% import "_macros/steam_image.html" as steam_img %}
 {% block title %}{{ template.name }} — {{ t(key="templates-title", lang="en-US") }}{% endblock %}
 
 {% block content %}
-<div class="mb-3">
-    <a href="/templates" class="text-sm text-slate-500 hover:text-slate-700 no-underline transition-colors">&larr; {{ t(key="templates-back", lang="en-US") }}</a>
-    <h1 class="text-2xl font-bold text-slate-900 mt-2 mb-0">{{ template.name }}</h1>
+<!-- Hero banner -->
+<div class="flex rounded-xl overflow-hidden mb-5" style="height:200px">
+    <div class="relative flex-1 overflow-hidden">
+        {{ steam_img::steam_hero(app_id=template.app_id, img_class="absolute inset-0 w-full h-full") }}
+        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black"></div>
+    </div>
+    <div class="flex-shrink-0 bg-black flex items-center p-6" style="width:400px">
+        <div>
+            <a href="/templates" class="text-white/60 text-sm hover:text-white no-underline transition-colors inline-block mb-2">
+                &larr; {{ t(key="templates-back", lang="en-US") }}</a>
+            <h1 class="text-white text-3xl font-bold mt-0 mb-0">{{ template.name }}</h1>
+            <div class="text-white/70 text-sm">App ID: {{ template.app_id }}</div>
+        </div>
+    </div>
+</div>
 {% if error %}
 <div class="mb-3 bg-red-50 border border-red-200 rounded-lg p-4">
     <p class="text-sm text-red-700 m-0">{{ error }}</p>

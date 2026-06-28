@@ -15,12 +15,25 @@ use crate::AppDirs;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-use linux::{BINARY_NAME, DOWNLOAD_URL, TEMP_FILE_NAME};
+pub use linux::{detect_package_manager, DistroInfo, BINARY_NAME, DOWNLOAD_URL, TEMP_FILE_NAME};
 
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
 use windows::{BINARY_NAME, DOWNLOAD_URL, TEMP_FILE_NAME};
+
+// Fallback for non-Linux platforms
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug, Clone)]
+pub struct DistroInfo {
+    pub label: String,
+    pub install_command: String,
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn detect_package_manager() -> Option<DistroInfo> {
+    None
+}
 
 use linux_or_windows::extract;
 
@@ -36,8 +49,12 @@ mod linux_or_windows {
 const HLDS_APP_ID: u32 = 90;
 const HLDS_UPDATE_RETRIES: u32 = 5;
 
-/// Name of the steamcmd data directory inside the application data directory.
+/// Name of the steamcmd data directory.
 const STEAMCMD_DIR_NAME: &str = "steamcmd";
+
+/// Hidden file in the steamcmd dir that stores the `LD_PRELOAD` path.
+#[cfg(target_os = "linux")]
+const LD_PRELOAD_HINT: &str = ".ld_preload";
 
 /// Health status of the `SteamCMD` installation.
 ///
@@ -165,19 +182,38 @@ pub struct SteamCmd {
     binary_path: PathBuf,
     /// Optional command run model for logging progress to the log file.
     model: Option<CommandRunModel>,
+    /// `LD_PRELOAD` path for glibc compatibility workaround, loaded from disk.
+    #[allow(dead_code)]
+    ld_preload_path: Option<PathBuf>,
 }
 
 impl SteamCmd {
+    /// Read the persisted `LD_PRELOAD` hint file from the steamcmd directory.
+    #[cfg(target_os = "linux")]
+    fn load_ld_preload_hint(steamcmd_dir: &Path) -> Option<PathBuf> {
+        let hint_path = steamcmd_dir.join(LD_PRELOAD_HINT);
+        std::fs::read_to_string(&hint_path)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+    }
+
     /// Create a new [`SteamCmd`] instance with paths resolved from the
     /// application's data directories.
     #[must_use]
     pub fn new(dirs: &AppDirs) -> Self {
         let steamcmd_dir = dirs.app_dir.join(STEAMCMD_DIR_NAME);
         let binary_path = steamcmd_dir.join(BINARY_NAME);
+        #[cfg(target_os = "linux")]
+        let ld_preload_path = Self::load_ld_preload_hint(&steamcmd_dir);
+        #[cfg(not(target_os = "linux"))]
+        let ld_preload_path = None;
         Self {
             steamcmd_dir,
             binary_path,
             model: None,
+            ld_preload_path,
         }
     }
 
@@ -212,6 +248,39 @@ impl SteamCmd {
         &self.binary_path
     }
 
+    /// Create a `tokio::process::Command` for the `SteamCMD` binary,
+    /// applying `LD_PRELOAD` from the persisted hint file if present.
+    #[cfg(target_os = "linux")]
+    fn command(&self) -> Command {
+        let mut cmd = Command::new(&self.binary_path);
+        if let Some(ref path) = self.ld_preload_path {
+            cmd.env("LD_PRELOAD", path);
+        }
+        cmd
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn command(&self) -> Command {
+        Command::new(&self.binary_path)
+    }
+
+    /// Create a `std::process::Command` for the `SteamCMD` binary,
+    /// applying `LD_PRELOAD` from the persisted hint file if present.
+    /// Used for synchronous invocation in `is_installed_with_deps`.
+    #[cfg(target_os = "linux")]
+    fn command_std(&self) -> std::process::Command {
+        let mut cmd = std::process::Command::new(&self.binary_path);
+        if let Some(ref path) = self.ld_preload_path {
+            cmd.env("LD_PRELOAD", path);
+        }
+        cmd
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn command_std(&self) -> std::process::Command {
+        std::process::Command::new(&self.binary_path)
+    }
+
     /// Checks if the steamcmd binary exists on disk.
     #[must_use]
     pub fn is_installed(&self) -> bool {
@@ -221,9 +290,11 @@ impl SteamCmd {
     /// Checks if steamcmd is installed and verifies the binary can actually
     /// run by executing a live test.
     ///
-    /// This spawns `steamcmd.sh +quit` and checks the exit code. If the binary
-    /// exists but fails to start (missing shared libraries, permission issues,
-    /// etc.), the captured stderr is returned in the error for diagnostics.
+    /// On Linux, first checks for missing 32-bit shared library dependencies
+    /// using `ldd` to catch problems before the binary segfaults. Then spawns
+    /// `steamcmd.sh +quit` and checks the exit code. If the binary exists but
+    /// fails to start (missing shared libraries, permission issues, etc.),
+    /// the captured stderr is returned in the error for diagnostics.
     ///
     /// # Errors
     /// Returns [`SteamCmdError::Io`] if the steamcmd binary is not found.
@@ -238,7 +309,12 @@ impl SteamCmd {
             )));
         }
 
-        let output = std::process::Command::new(&self.binary_path)
+        // On Linux, check for missing 32-bit shared libraries before running.
+        // This catches the issue proactively without a segfault.
+        #[cfg(target_os = "linux")]
+        self.check_dependencies()?;
+        let output = self
+            .command_std()
             .arg("+quit")
             .output()
             .map_err(SteamCmdError::Spawn)?;
@@ -287,6 +363,10 @@ impl SteamCmd {
         // Attempt to install platform-specific dependencies (best-effort, no-op on Windows).
         // Failure is logged but does not block installation — the binary may still work.
         self.try_install_dependencies().await;
+
+        // Configure LD_PRELOAD if the binary segfaults on this system (glibc >= 2.38).
+        #[cfg(target_os = "linux")]
+        self.configure_shell_env().await;
 
         if self.is_installed() {
             info!(path = %self.binary_path.display(), "SteamCMD installed successfully");
@@ -356,7 +436,8 @@ impl SteamCmd {
             "Running SteamCMD"
         );
 
-        let output = Command::new(&self.binary_path)
+        let output = self
+            .command()
             .args(args)
             .output()
             .await
@@ -395,7 +476,8 @@ impl SteamCmd {
             )));
         }
 
-        let output = Command::new(&self.binary_path)
+        let output = self
+            .command()
             .args(args)
             .output()
             .await
