@@ -2,6 +2,28 @@ use game_smith::app::App;
 use loco_rs::testing::prelude::*;
 use serial_test::serial;
 
+/// GET /templates renders the template list page.
+#[tokio::test]
+#[serial]
+async fn templates_list_renders() {
+    request::<App, _, _>(|request, _ctx| async move {
+        let response = request.get("/templates").await;
+        response.assert_status_success();
+    })
+    .await;
+}
+
+/// GET /templates/new renders the create template form.
+#[tokio::test]
+#[serial]
+async fn templates_new_form_renders() {
+    request::<App, _, _>(|request, _ctx| async move {
+        let response = request.get("/templates/new").await;
+        response.assert_status_success();
+    })
+    .await;
+}
+
 /// POST /templates with a duplicate name re-renders the form with an error message
 /// and the submitted data preserved.
 #[tokio::test]

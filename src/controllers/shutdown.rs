@@ -7,13 +7,19 @@
 //! not from any synthetic tracking state.
 
 use crate::initializers::embedded_i18n::EmbeddedViews;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::routing::get;
-use axum::Json;
 use loco_rs::app::AppContext;
 use loco_rs::controller::views::ViewEngine;
 use loco_rs::prelude::*;
 use serde::Serialize;
+/// Query parameters for the shutdown page.
+#[derive(serde::Deserialize)]
+pub(crate) struct ShutdownQuery {
+    /// When true, skips `std::process::exit(0)` at the end.
+    /// Use this for testing or manual inspection.
+    testing: Option<bool>,
+}
 
 /// Per-server shutdown status.
 #[derive(Clone, Debug, Serialize)]
@@ -85,9 +91,11 @@ async fn build_status(ctx: &AppContext) -> ShutdownStatus {
 ///
 /// # Errors
 /// Returns an error if rendering fails.
+#[allow(private_interfaces)]
 pub async fn show(
     State(ctx): State<AppContext>,
     ViewEngine(v): ViewEngine<EmbeddedViews>,
+    Query(query): Query<ShutdownQuery>,
 ) -> Result<impl IntoResponse> {
     let all_servers = crate::models::game_servers::Model::list(&ctx)
         .await
@@ -95,9 +103,9 @@ pub async fn show(
 
     let ctx_clone = ctx.clone();
     let spawn_servers = all_servers.clone();
+    let do_exit = query.testing != Some(true);
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await; // Brief delay to allow the initial page response to be sent before we start killing processes. makes thing look fancy
-
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         // Send SIGTERM to every alive server.
         for server in &spawn_servers {
             let alive = crate::models::game_servers::is_alive(&ctx_clone, server).await;
@@ -125,8 +133,9 @@ pub async fn show(
 
         // Allow time for the browser to receive the final status update.
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        tracing::info!("shutdown complete");
-        std::process::exit(0);
+        if do_exit {
+            std::process::exit(0);
+        }
     });
 
     crate::views::shutdown::show(&v, &all_servers)

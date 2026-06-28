@@ -13,6 +13,7 @@ use serde::Serialize;
 pub struct ShutdownServerView<'a> {
     pub id: i32,
     pub name: &'a str,
+    pub app_id: i32,
 }
 
 impl<'a> ShutdownServerView<'a> {
@@ -21,6 +22,7 @@ impl<'a> ShutdownServerView<'a> {
         Self {
             id: server.id,
             name: &server.name,
+            app_id: server.app_id,
         }
     }
 }
