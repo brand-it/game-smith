@@ -86,8 +86,15 @@ pub async fn save_config(
     let dirs = AppDirs::new(data_home);
     let key_path = dirs.app_dir.join("secret.key");
 
-    let key = EncryptionKey::load(&key_path)
-        .map_err(|e| loco_rs::Error::string(&format!("failed to load encryption key: {e}")))?;
+    let Ok(key) = EncryptionKey::load(&key_path) else {
+        return crate::views::steam_config::config(
+            &ctx,
+            &v,
+            existing_username.as_deref(),
+            Some("Encryption key not found. Please initialize the application first."),
+            None,
+        );
+    };
 
     // Encrypt password
     let (nonce, ciphertext) = key
