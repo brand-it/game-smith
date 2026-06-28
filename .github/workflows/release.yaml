@@ -58,7 +58,7 @@ jobs:
         run: make package
       - name: Upload Linux artifacts
         if: matrix.name == 'linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: assets-${{ matrix.name }}
           path: |
@@ -78,7 +78,7 @@ jobs:
         run: cargo wix --package game-smith
       - name: Upload Windows artifacts
         if: matrix.name == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: assets-${{ matrix.name }}
           path: target/wix/
