@@ -36,7 +36,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -47,7 +47,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/
           key: ${{ runner.os }}-cargo-target-deb-${{ hashFiles('**/Cargo.lock') }}
@@ -88,7 +88,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -99,7 +99,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/
           key: ${{ runner.os }}-cargo-target-rpm-${{ hashFiles('**/Cargo.lock') }}
@@ -139,7 +139,7 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Cache cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: target/
           key: ${{ runner.os }}-cargo-target-windows-${{ hashFiles('**/Cargo.lock') }}
