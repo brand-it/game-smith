@@ -82,7 +82,7 @@ fn run_server() -> Result<()> {
     let port = config.port;
     if std::net::TcpListener::bind(format!("127.0.0.1:{port}")).is_err() {
         eprintln!("game-smith: already running on port {port}, opening browser");
-        let _ = open::that(format!("http://127.0.0.1:{port}"));
+        game_smith::desktop::open_url(&format!("http://127.0.0.1:{port}"));
         return Ok(());
     }
 

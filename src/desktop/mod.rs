@@ -172,15 +172,49 @@ impl DesktopManager {
         let url = self.server_url.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(2));
-            if let Err(e) = open::that(&url) {
-                tracing::warn!(error = %e, url = %url, "failed to open browser");
-            }
+            open_url(&url);
         });
     }
 
     /// Shows a desktop notification.
     pub fn notify(&self, title: &str, message: &str) {
         notifications::notify(title, message);
+    }
+}
+
+/// Opens a URL in the default browser using a robust fallback chain.
+///
+/// Tries `gio open` first (works with GTK), then `xdg-open` via the `open` crate,
+/// and finally prints the URL to stderr as a last resort.
+#[cfg(target_os = "linux")]
+pub fn open_url(url: &str) {
+    // Try `gio open` first — it's the GLib tool that works when GTK is available
+    if let Err(e) = std::process::Command::new("gio")
+        .arg("open")
+        .arg(url)
+        .output()
+    {
+        tracing::debug!(error = %e, "gio not found, trying fallback");
+    } else {
+        return;
+    }
+
+    // Fall back to `open::that()` which delegates to `xdg-open`
+    if let Err(e) = open::that(url) {
+        tracing::warn!(error = %e, url = %url, "failed to open browser");
+    } else {
+        return;
+    }
+
+    // Last resort: print the URL
+    eprintln!("game-smith: open {url}");
+}
+
+/// Opens a URL in the default browser (non-Linux fallback).
+#[cfg(not(target_os = "linux"))]
+pub fn open_url(url: &str) {
+    if let Err(e) = open::that(url) {
+        tracing::warn!(error = %e, url = %url, "failed to open browser");
     }
 }
 
@@ -221,12 +255,16 @@ fn check_appindicator_lib() -> Result<(), String> {
     for path in common_paths {
         let lib_path = format!("{}/{}", path, lib_name.to_string_lossy());
         if std::path::Path::new(&lib_path).exists() {
-            return Err(format!(
-                "libayatana-appindicator3.so.1 is installed at `{lib_path}` but not in LD_LIBRARY_PATH.\n\
-                 The tray icon requires this library at runtime.\n\
-                 Fix: export LD_LIBRARY_PATH={path}:$LD_LIBRARY_PATH\n\
-                 Or: use 'make dev' instead of 'cargo run' (automatically sets LD_LIBRARY_PATH)."
-            ));
+            let existing = std::env::var_os("LD_LIBRARY_PATH")
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let new_path = format!("{path}:{existing}");
+            std::env::set_var("LD_LIBRARY_PATH", &new_path);
+            tracing::info!(
+                path,
+                "auto-fixed LD_LIBRARY_PATH for libayatana-appindicator"
+            );
+            return Ok(());
         }
     }
 

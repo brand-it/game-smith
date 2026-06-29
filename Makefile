@@ -122,6 +122,7 @@ build-css: $(TAILWIND_CLI)
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
 package:
+	cargo install cargo-packager --locked --quiet 2>/dev/null || cargo install cargo-packager --quiet
 	NO_STRIP=1 cargo packager --release
 	@echo ""
 	@echo "Packages built:"
@@ -164,6 +165,8 @@ run-release: release
 	./target/release/game-smith start
 release:
 	cargo build --release
+	@echo ""
+	@echo "Built: $(CURDIR)/target/release/game-smith"
 
 # Enable/disable autostart on boot (requires installed binary)
 install-autostart:
