@@ -112,13 +112,13 @@ impl Tray {
 fn dispatch_menu(event: &MenuEvent, server_url: &str, tray: &TrayIcon) {
     match event.id.as_ref() {
         MENU_OPEN => {
-            let _ = open::that(server_url);
+            super::open_url(server_url);
         }
         MENU_QUIT => {
             // Open the /shutdown URL directly — the controller handles
             // stopping game servers and exiting the process.
             let shutdown_url = format!("{server_url}/shutdown");
-            let _ = open::that(&shutdown_url);
+            super::open_url(&shutdown_url);
         }
         MENU_AUTOSTART => {
             let was_enabled = super::autostart::is_enabled().unwrap_or(false);
