@@ -1804,7 +1804,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2055,7 +2055,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera 2.0.0",
+ "tera",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -3183,7 +3183,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3232,7 +3232,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -4973,7 +4973,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
 ]
 
@@ -5467,9 +5467,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
@@ -6341,15 +6341,6 @@ dependencies = [
  "serde_json",
  "slug",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "tera"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38ea62bd58771b570262e11ffa274fa9eda9986bd886e6e3a1f7f42afef8024c"
-dependencies = [
- "serde",
 ]
 
 [[package]]
