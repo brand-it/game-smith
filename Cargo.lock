@@ -1804,7 +1804,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2055,7 +2055,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera",
+ "tera 2.0.0",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -3183,7 +3183,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3232,7 +3232,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -4973,7 +4973,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
 ]
 
@@ -4999,20 +4999,21 @@ dependencies = [
 
 [[package]]
 name = "rstest"
-version = "0.26.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5a3193c063baaa2a95a33f03035c8a72b83d97a54916055ba22d35ed3839d49"
+checksum = "6fc39292f8613e913f7df8fa892b8944ceb47c247b78e1b1ae2f09e019be789d"
 dependencies = [
  "futures-timer",
  "futures-util",
  "rstest_macros",
+ "rustc_version",
 ]
 
 [[package]]
 name = "rstest_macros"
-version = "0.26.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c845311f0ff7951c5506121a9ad75aec44d083c31583b2ea5a30bcb0b0abba0"
+checksum = "1f168d99749d307be9de54d23fd226628d99768225ef08f6ffb52e0182a27746"
 dependencies = [
  "cfg-if",
  "glob",
@@ -6340,6 +6341,15 @@ dependencies = [
  "serde_json",
  "slug",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "tera"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38ea62bd58771b570262e11ffa274fa9eda9986bd886e6e3a1f7f42afef8024c"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
