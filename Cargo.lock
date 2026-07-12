@@ -1561,11 +1561,10 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "engineioxide"
-version = "0.17.3"
+version = "0.17.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0820037bd6cf299ca3f6a7fe1f2681cdab42db8730e447fdf72cc8c60b338b5"
+checksum = "1c48884059941b2b6255eabe1e9dca48e1aa01242299a7ef60844ded113b1d50"
 dependencies = [
- "base64",
  "bytes",
  "engineioxide-core",
  "futures-core",
@@ -1589,14 +1588,21 @@ dependencies = [
 
 [[package]]
 name = "engineioxide-core"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a68868b34254632364403d72a823927096ef5a1241bd039b544e5e1fa675e49e"
+checksum = "06c5f98b2d2338ec0713bc222c753bfd18746bd76cbb115afa18aa07c6096553"
 dependencies = [
  "base64",
  "bytes",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "pin-project-lite",
  "rand 0.10.1",
  "serde",
+ "serde_json",
+ "smallvec",
 ]
 
 [[package]]
@@ -5788,9 +5794,9 @@ dependencies = [
 
 [[package]]
 name = "socketioxide"
-version = "0.18.3"
+version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cc4e3ca05df7ebdc9ae6c1a6d9211648ab0ca47447593a449d45b414f57e96d"
+checksum = "2417508caba506aa37fd23b17c7dffdae0a9c5c1accfc0e778fc5c254336b7ac"
 dependencies = [
  "bytes",
  "engineioxide",
@@ -5813,9 +5819,9 @@ dependencies = [
 
 [[package]]
 name = "socketioxide-core"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b8ae8f85d9fad2966a7e6a49b47821f6b99454ec54fe53784f5f4172e28f70a"
+checksum = "71e520fedd1addc257506026a31268d9a6eeee79b158c7fc8b270c4c7a1cfc4f"
 dependencies = [
  "arbitrary",
  "bytes",
