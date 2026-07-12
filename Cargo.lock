@@ -1165,6 +1165,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cron"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5dcd6f69605c2956916ce24e8af637b754964c9a83f4662d3a2361654cdba09"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "phf",
+ "winnow 0.7.15",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2032,7 +2044,7 @@ dependencies = [
  "axum-extra",
  "chacha20poly1305",
  "chrono",
- "cron",
+ "cron 0.17.0",
  "data-encoding",
  "flate2",
  "fluent-templates",
@@ -2064,7 +2076,7 @@ dependencies = [
  "tera",
  "tokio",
  "tower 0.5.3",
- "tower-http 0.7.0",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "tray-icon",
@@ -3245,7 +3257,7 @@ dependencies = [
  "tokio-util",
  "toml",
  "tower 0.4.13",
- "tower-http 0.6.11",
+ "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -4895,7 +4907,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower 0.5.3",
- "tower-http 0.6.11",
+ "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -6455,7 +6467,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2594dd7c2abbbafbb1c78d167fd10860dc7bd75f814cb051a1e0d3e796b9702"
 dependencies = [
  "chrono",
- "cron",
+ "cron 0.12.1",
  "num-derive",
  "num-traits",
  "tokio",
@@ -6659,21 +6671,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b11f75e912b0c2be01b63d8cf8057b8c3f97cf34abb3d431a3a4c8675498e233"
-dependencies = [
- "bitflags 2.11.1",
- "bytes",
- "http",
- "percent-encoding",
- "pin-project-lite",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -7794,6 +7791,15 @@ name = "winnow"
 version = "0.5.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "winnow"
+version = "0.7.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr",
 ]
