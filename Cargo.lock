@@ -1810,7 +1810,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2061,7 +2061,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera 2.1.0",
+ "tera",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -2199,11 +2199,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 6.0.0",
  "rand_core 0.10.1",
  "wasip2",
  "wasip3",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3189,7 +3191,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3238,7 +3240,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -4621,14 +4623,15 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "2f4bfc015262b9df63c8845072ce59068853ff5872180c2ce2f13038b970e560"
 dependencies = [
  "bytes",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "lru-slab",
- "rand 0.9.4",
+ "rand 0.10.1",
+ "rand_pcg",
  "ring",
  "rustc-hash",
  "rustls",
@@ -4762,6 +4765,15 @@ name = "rand_core"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+
+[[package]]
+name = "rand_pcg"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
+dependencies = [
+ "rand_core 0.10.1",
+]
 
 [[package]]
 name = "redis"
@@ -4972,7 +4984,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
 ]
 
@@ -6335,15 +6347,6 @@ dependencies = [
  "serde_json",
  "slug",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "tera"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "511f07fd91a70e92efbe4793d111aaa9035f8474dd157aaa1e31e7c27f5051da"
-dependencies = [
- "serde",
 ]
 
 [[package]]
