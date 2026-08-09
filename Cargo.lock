@@ -1165,18 +1165,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cron"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5dcd6f69605c2956916ce24e8af637b754964c9a83f4662d3a2361654cdba09"
-dependencies = [
- "chrono",
- "once_cell",
- "phf",
- "winnow 0.7.15",
-]
-
-[[package]]
 name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,9 +1312,9 @@ dependencies = [
 
 [[package]]
 name = "data-encoding"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
+checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "deflate64"
@@ -2044,7 +2032,7 @@ dependencies = [
  "axum-extra",
  "chacha20poly1305",
  "chrono",
- "cron 0.17.0",
+ "cron",
  "data-encoding",
  "flate2",
  "fluent-templates",
@@ -6490,7 +6478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2594dd7c2abbbafbb1c78d167fd10860dc7bd75f814cb051a1e0d3e796b9702"
 dependencies = [
  "chrono",
- "cron 0.12.1",
+ "cron",
  "num-derive",
  "num-traits",
  "tokio",
@@ -7814,15 +7802,6 @@ name = "winnow"
 version = "0.5.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "winnow"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr",
 ]
