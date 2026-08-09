@@ -1810,7 +1810,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2061,7 +2061,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera 2.1.0",
+ "tera",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -3191,7 +3191,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3240,7 +3240,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -4984,7 +4984,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
 ]
 
@@ -6350,15 +6350,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tera"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "511f07fd91a70e92efbe4793d111aaa9035f8474dd157aaa1e31e7c27f5051da"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6795,9 +6786,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65ba1e5f6b9ef9fd87e21b9c6f351554dbd717960089168fcfdef854686961dc"
+checksum = "045979e3f037cd18ad1cb2a419dfda133c5c29c9f3453370079f2255d46c257e"
 dependencies = [
  "crossbeam-channel",
  "dirs",
