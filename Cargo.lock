@@ -1846,7 +1846,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2097,7 +2097,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera 2.3.0",
+ "tera",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -3236,7 +3236,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3285,7 +3285,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -5039,7 +5039,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera 1.20.1",
+ "tera",
  "thiserror 1.0.69",
 ]
 
@@ -6416,15 +6416,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tera"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52fca06a22977165c6821c26e2bf0387cd7e0822107a6854d5fbb787307c4194"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7108,9 +7099,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.24.0"
+version = "1.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
+checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
