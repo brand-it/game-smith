@@ -1846,7 +1846,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2097,10 +2097,10 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera",
+ "tera 2.4.0",
  "tokio",
  "tower 0.5.3",
- "tower-http 0.7.1",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "tray-icon",
@@ -3236,7 +3236,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3285,14 +3285,14 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
  "tokio-util",
  "toml",
  "tower 0.4.13",
- "tower-http 0.6.11",
+ "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -4953,7 +4953,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tower 0.5.3",
- "tower-http 0.6.11",
+ "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -5030,7 +5030,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
 ]
 
@@ -6406,6 +6406,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tera"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61e0cadeeb54426080b4c5395d59769ce8293f542cc25511c167c742b2175809"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6738,21 +6747,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
-dependencies = [
- "bitflags 2.11.1",
- "bytes",
- "http",
- "percent-encoding",
- "pin-project-lite",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
