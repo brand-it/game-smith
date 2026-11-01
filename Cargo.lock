@@ -2072,7 +2072,7 @@ dependencies = [
  "data-encoding",
  "flate2",
  "fluent-templates",
- "getrandom 0.2.17",
+ "getrandom 0.4.2",
  "glib",
  "gtk",
  "include_dir",
@@ -2106,7 +2106,7 @@ dependencies = [
  "tray-icon",
  "unic-langid",
  "uuid",
- "validator 0.21.0",
+ "validator",
  "windows 0.62.2",
  "zip",
 ]
@@ -3299,7 +3299,7 @@ dependencies = [
  "tree-fs",
  "ulid",
  "uuid",
- "validator 0.20.0",
+ "validator",
 ]
 
 [[package]]
@@ -7114,20 +7114,6 @@ dependencies = [
  "serde_json",
  "url",
  "validator_derive",
-]
-
-[[package]]
-name = "validator"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d68c6633c483df6780cc5277a417c7c2d1bceee2649d06c8ab6b0fd2dd3c81"
-dependencies = [
- "idna",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "url",
 ]
 
 [[package]]
