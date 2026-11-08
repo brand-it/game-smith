@@ -1846,7 +1846,7 @@ dependencies = [
  "intl-memoizer",
  "log",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 2.0.18",
  "unic-langid",
 ]
@@ -2072,7 +2072,7 @@ dependencies = [
  "data-encoding",
  "flate2",
  "fluent-templates",
- "getrandom 0.4.2",
+ "getrandom 0.2.17",
  "glib",
  "gtk",
  "include_dir",
@@ -2097,7 +2097,7 @@ dependencies = [
  "serial_test",
  "socketioxide",
  "tar",
- "tera",
+ "tera 2.4.0",
  "tokio",
  "tower 0.5.3",
  "tower-http",
@@ -3236,7 +3236,7 @@ dependencies = [
  "rrgen",
  "serde",
  "serde_json",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -3285,7 +3285,7 @@ dependencies = [
  "serde_variant",
  "serde_yaml",
  "sqlx",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -5030,7 +5030,7 @@ dependencies = [
  "serde_json",
  "serde_regex",
  "serde_yaml",
- "tera",
+ "tera 1.20.1",
  "thiserror 1.0.69",
 ]
 
@@ -6403,6 +6403,15 @@ dependencies = [
  "serde_json",
  "slug",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "tera"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61e0cadeeb54426080b4c5395d59769ce8293f542cc25511c167c742b2175809"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
