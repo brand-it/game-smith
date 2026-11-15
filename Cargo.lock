@@ -484,7 +484,6 @@ dependencies = [
  "axum-core",
  "bytes",
  "cookie",
- "form_urlencoded",
  "futures-util",
  "http",
  "http-body",
@@ -492,6 +491,29 @@ dependencies = [
  "mime",
  "pin-project-lite",
  "rustversion",
+ "serde_core",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "axum-extra"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be44683b41ccb9ab2d23a5230015c9c3c55be97a25e4428366de8873103f7970"
+dependencies = [
+ "axum",
+ "axum-core",
+ "bytes",
+ "form_urlencoded",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "mime",
+ "pin-project-lite",
  "serde_core",
  "serde_html_form",
  "serde_path_to_error",
@@ -2065,7 +2087,7 @@ dependencies = [
  "async-trait",
  "auto-launch",
  "axum",
- "axum-extra",
+ "axum-extra 0.12.6",
  "chacha20poly1305",
  "chrono",
  "cron",
@@ -3250,7 +3272,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "axum",
- "axum-extra",
+ "axum-extra 0.10.3",
  "axum-test",
  "backtrace_printer",
  "byte-unit",
@@ -5056,20 +5078,21 @@ dependencies = [
 
 [[package]]
 name = "rstest"
-version = "0.28.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b376e512f30a7686a8dbc6aeaace99b3ade1c26c1c63473473a817ade226dafc"
+checksum = "6fc39292f8613e913f7df8fa892b8944ceb47c247b78e1b1ae2f09e019be789d"
 dependencies = [
  "futures-timer",
  "futures-util",
  "rstest_macros",
+ "rustc_version",
 ]
 
 [[package]]
 name = "rstest_macros"
-version = "0.28.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88512dbfb5b73a0dfa38aef7bc73b5657035fce477b923faf12d332dd83051ea"
+checksum = "1f168d99749d307be9de54d23fd226628d99768225ef08f6ffb52e0182a27746"
 dependencies = [
  "cfg-if",
  "glob",
